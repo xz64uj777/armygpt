@@ -65,3 +65,9 @@ The game offers onscreen analog steering, **hold DRIVE** and **hold REVERSE** pe
 - Each cycle deforms the ground into a cut and spoil mound. Repeated passes deepen the trench, and the tactical map displays disturbed soil.
 - After the convoy reaches the base, choose **CONTINUE IN FREEPLAY** to keep driving and excavating.
 - Excavation is restricted away from the road and river crossing to protect mission geometry.
+
+## Rear chase camera (Phase II update)
+
+- Each mission starts in a rear follow-camera relative to the currently selected machine. Switching machines automatically recovers the behind-the-machine view.
+- Drag/swipe on the 3D scene to orbit and pinch/scroll to zoom.
+- Double tap on the 3D scene (double click on desktop), or press **R**, to restore the default behind-vehicle chase view. Camera mode button cycles rear-follow zoom/elevation presets.

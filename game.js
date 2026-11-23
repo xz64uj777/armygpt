@@ -410,7 +410,7 @@ const objectives=[
   {id:'dispatch',title:'ESCORT THE CONVOY',detail:'DISPATCH / SECURE NORTH ROAD',unit:null,x:0,z:-78,radius:9999,done:false}
 ];
 units.forEach(syncUnit);
-const state={started:false,won:false,selected:0,working:null,workTime:0,workDuration:2.65,earthMoved:0,bridgeBuild:-1,convoy:false,storm:false,sound:false,cameraMode:0,orbit:.55,pitch:.79,distance:46,elapsed:0,noticeUntil:0,lastWarning:0};
+const state={started:false,won:false,selected:0,working:null,workTime:0,workDuration:2.65,earthMoved:0,bridgeBuild:-1,convoy:false,storm:false,sound:false,cameraMode:0,orbit:PI,pitch:.58,distance:36,elapsed:0,noticeUntil:0,lastWarning:0};
 const input={keys:new Set(),forward:0,steer:0,pedalForward:0,pedalReverse:0};
 let audioContext=null;
 function beep(freq=220,duration=.12){
@@ -456,6 +456,7 @@ function renderFleet(){
 function selectVehicle(index){
   if(!state.started||state.working)return;
   state.selected=clamp(index,0,units.length-1);
+  resetCameraBehind();
   beep(510,.08);
   renderFleet();updateAction();
 }
@@ -525,18 +526,31 @@ function finishAction(obj){
   renderObjectives();updateAction();beep(650,.35);
   if(objectives.slice(0,3).every(o=>o.done))toast('ALL FIELD OBJECTIVES COMPLETE — DISPATCH AVAILABLE');
 }
-// Drag to orbit the scene, or pinch two fingers to zoom (works with a thumb on the drive controls).
-const orbit={pointers:new Map(),lastPinch:0};
+// The follow camera stays relative to the active machine's heading.
+// A double-tap/double-click on the 3D view restores the rear chase camera.
+function resetCameraBehind(notify=false){
+  state.orbit=PI;
+  state.pitch=.58;
+  state.distance=36;
+  state.cameraMode=0;
+  if(notify)toast('CAMERA RECENTERED — FOLLOWING MACHINE');
+}
+const orbit={pointers:new Map(),lastPinch:0,lastTap:null};
 ui.scene.addEventListener('pointerdown',e=>{
   if(!state.started)return;
-  orbit.pointers.set(e.pointerId,{x:e.clientX,y:e.clientY});
-  if(orbit.pointers.size===2){const [a,b]=[...orbit.pointers.values()];orbit.lastPinch=Math.hypot(a.x-b.x,a.y-b.y);}
+  orbit.pointers.set(e.pointerId,{x:e.clientX,y:e.clientY,startX:e.clientX,startY:e.clientY,downAt:e.timeStamp,moved:false,multi:false});
+  if(orbit.pointers.size>=2){
+    for(const p of orbit.pointers.values())p.multi=true;
+    orbit.lastTap=null;
+    if(orbit.pointers.size===2){const [a,b]=[...orbit.pointers.values()];orbit.lastPinch=Math.hypot(a.x-b.x,a.y-b.y);}
+  }
   ui.scene.setPointerCapture(e.pointerId);
 });
 ui.scene.addEventListener('pointermove',e=>{
   const last=orbit.pointers.get(e.pointerId);if(!last)return;
   const dx=e.clientX-last.x,dy=e.clientY-last.y;
-  orbit.pointers.set(e.pointerId,{x:e.clientX,y:e.clientY});
+  if(Math.hypot(e.clientX-last.startX,e.clientY-last.startY)>12)last.moved=true;
+  last.x=e.clientX;last.y=e.clientY;
   if(orbit.pointers.size===1){state.orbit-=dx*.006;state.pitch=clamp(state.pitch+dy*.004,.22,1.36);}
   else if(orbit.pointers.size===2){
     const [a,b]=[...orbit.pointers.values()],distance=Math.hypot(a.x-b.x,a.y-b.y);
@@ -544,8 +558,21 @@ ui.scene.addEventListener('pointermove',e=>{
     orbit.lastPinch=distance;
   }
 });
-const releaseOrbit=e=>{orbit.pointers.delete(e.pointerId);orbit.lastPinch=0;};
-ui.scene.addEventListener('pointerup',releaseOrbit);ui.scene.addEventListener('pointercancel',releaseOrbit);
+const releaseOrbit=e=>{
+  const p=orbit.pointers.get(e.pointerId);
+  if(!p)return;
+  if(e.type==='pointerup'&&!p.multi&&!p.moved&&e.timeStamp-p.downAt<350){
+    const prev=orbit.lastTap;
+    if(prev&&e.timeStamp-prev.at<340&&Math.hypot(e.clientX-prev.x,e.clientY-prev.y)<48){
+      resetCameraBehind(true);
+      orbit.lastTap=null;
+    }else orbit.lastTap={at:e.timeStamp,x:e.clientX,y:e.clientY};
+  }else if(e.type!=='lostpointercapture')orbit.lastTap=null;
+  orbit.pointers.delete(e.pointerId);
+  if(orbit.pointers.size<2)orbit.lastPinch=0;
+};
+ui.scene.addEventListener('pointerup',releaseOrbit);
+ui.scene.addEventListener('pointercancel',releaseOrbit);
 ui.scene.addEventListener('lostpointercapture',releaseOrbit);
 ui.scene.addEventListener('wheel',e=>{e.preventDefault();state.distance=clamp(state.distance+e.deltaY*.035,15,110);},{passive:false});
 const keyDown=e=>{
@@ -557,15 +584,16 @@ const keyDown=e=>{
   if(['1','2','3','4'].includes(k))selectVehicle(+k-1);
   if(k===' ')startAction();
   if(k==='c')cycleCamera();
+  if(k==='r')resetCameraBehind(true);
   if(k==='h')toggleHelp();
 };
 window.addEventListener('keydown',keyDown);
 window.addEventListener('keyup',e=>input.keys.delete(e.key.toLowerCase()));
-window.addEventListener('blur',()=>{input.keys.clear();resetTouchInputs();orbit.pointers.clear();});
+window.addEventListener('blur',()=>{input.keys.clear();resetTouchInputs();orbit.pointers.clear();orbit.lastTap=null;});
 document.addEventListener('visibilitychange',()=>{if(document.hidden)resetTouchInputs();});
 ui.actionButton.addEventListener('click',startAction);
 ui.mobileActionButton.addEventListener('click',startAction);
-function cycleCamera(){state.cameraMode=(state.cameraMode+1)%3;state.distance=[46,25,82][state.cameraMode];state.pitch=[.79,.4,1.25][state.cameraMode];toast(['TACTICAL CHASE CAMERA','LOW-LEVEL FOLLOW CAMERA','HIGH-ALTITUDE COMMAND CAMERA'][state.cameraMode]);}
+function cycleCamera(){state.cameraMode=(state.cameraMode+1)%3;state.orbit=PI;state.distance=[36,24,82][state.cameraMode];state.pitch=[.58,.37,1.25][state.cameraMode];toast(['TACTICAL CHASE CAMERA','LOW-LEVEL FOLLOW CAMERA','HIGH-ALTITUDE COMMAND CAMERA'][state.cameraMode]);}
 ui.cameraButton.addEventListener('click',cycleCamera);
 function toggleHelp(){resetTouchInputs();ui.helpOverlay.classList.toggle('hidden');}
 ui.helpButton.addEventListener('click',toggleHelp);
@@ -590,6 +618,7 @@ ui.soundButton.addEventListener('click',()=>{
 function start(){
   if(state.started)return;
   state.started=true;
+  resetCameraBehind();
   ui.startOverlay.classList.add('hidden');
   renderFleet();
   toast('ENGINEER BATTALION DEPLOYED — OPEN THE PASS');
