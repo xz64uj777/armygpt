@@ -307,7 +307,7 @@ const recoveryGlow=mesh(scene,new THREE.CylinderGeometry(2.5,2.5,.04,24),new THR
 const convoy=Array.from({length:4},(_,i)=>({mesh:makeConvoyTruck(i===0?MAT.oliveLight:MAT.olive),z:-94-i*11,x:0}));
 for(const truck of convoy){truck.mesh.position.set(truck.x,groundY(truck.x,truck.z)+.11,truck.z);truck.mesh.visible=true;}
 function syncUnit(u){u.mesh.position.set(u.x,driveY(u.x,u.z)+.1,u.z);u.mesh.rotation.y=u.heading;}
-units.forEach(syncUnit);
+// Vehicle positions must be synchronized after objectives have been initialized.
 
 const rings=[];
 function makeRing(x,z,color=0xffb45f,r=7){
@@ -335,6 +335,7 @@ const objectives=[
   {id:'recover',title:'RECOVER THE VEHICLE',detail:'HEMTT / STRANDED ASSET',unit:'recovery',x:-21,z:-17,radius:16,done:false},
   {id:'dispatch',title:'ESCORT THE CONVOY',detail:'DISPATCH / SECURE NORTH ROAD',unit:null,x:0,z:-78,radius:9999,done:false}
 ];
+units.forEach(syncUnit);
 const state={started:false,won:false,selected:0,working:null,workTime:0,workDuration:2.65,bridgeBuild:-1,convoy:false,storm:false,sound:false,cameraMode:0,orbit:.55,pitch:.79,distance:46,elapsed:0,noticeUntil:0,lastWarning:0};
 const input={keys:new Set(),forward:0,steer:0,pedalForward:0,pedalReverse:0};
 let audioContext=null;
