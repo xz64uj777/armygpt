@@ -623,7 +623,8 @@ function update(dt){
     const desired=throttle*u.maxSpeed*(throttle<0?.52:1);
     u.speed=THREE.MathUtils.damp(u.speed,desired,throttle===0?5:2.3,dt);
     if(Math.abs(u.speed)<.03)u.speed=0;
-    if(Math.abs(u.speed)>.15)u.heading+=steering*u.turn*dt*(.42+Math.min(Math.abs(u.speed)/u.maxSpeed,.75))*(u.speed<0?-1:1);
+    // Camera follows from positive Z, so yaw is inverted to match the screen-left/screen-right steering directions.
+    if(Math.abs(u.speed)>.15)u.heading-=steering*u.turn*dt*(.42+Math.min(Math.abs(u.speed)/u.maxSpeed,.75))*(u.speed<0?-1:1);
     const nx=clamp(u.x+Math.sin(u.heading)*u.speed*dt,-117,117);
     const nz=clamp(u.z+Math.cos(u.heading)*u.speed*dt,-117,117);
     const needsBridge=nz>12&&nz<35;
