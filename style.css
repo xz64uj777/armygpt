@@ -4,3 +4,67 @@
 @media(max-width:760px){.topbar{height:70px;padding:12px 12px}.brand-icon{width:28px;height:32px;font-size:18px}.brand-title{font-size:22px}.eyebrow{font-size:7px;letter-spacing:1px}.top-actions{gap:5px}.top-chip,.top-button span{display:none}.top-button{padding:0;width:32px;justify-content:center}.mission-panel{left:10px;top:68px;width:min(52vw,238px);padding:11px}.mission-panel .section-heading{font-size:8px}.operation-name{font-size:20px;margin:10px 0 3px}.operation-desc{font-size:9px;margin-bottom:9px}.objective{padding:5px;gap:5px}.objective-number{width:17px;min-width:17px;height:17px;font-size:8px}.objective-title{font-size:9px;margin-bottom:1px}.objective-detail{font-size:8px}.mission-progress{margin-top:8px}.mission-tip{margin-top:7px;font-size:8px}.right-panel{top:68px;right:10px;width:min(40vw,180px);padding:7px}.map-header{font-size:7px}.map-scale{display:none}#minimap{margin:7px 0}.map-legend{font-size:6px}.conditions{display:none}.center-notice,.target-marker small{display:none}.bottom-hud{bottom:max(9px,env(safe-area-inset-bottom));left:9px;right:9px;grid-template-columns:1fr 1fr;gap:6px}.fleet-panel{grid-column:1 / -1;padding:7px}.fleet{margin-top:7px;gap:5px}.fleet-item{padding:6px 6px 5px}.fleet-icon{font-size:17px;margin-bottom:2px}.fleet-name{font-size:13px}.fleet-role{font-size:7px}.fleet-index{font-size:8px}.telemetry{padding:7px}.telemetry>strong{font-size:16px;margin:3px 0 6px}.telemetry-label{font-size:7px}.telemetry-data strong{font-size:13px}.telemetry-data small{font-size:7px}.action-panel{padding:7px}.action-panel .section-heading{font-size:8px}.action-btn{min-height:37px;margin-top:6px;font-size:14px;padding:0 5px;gap:5px}.action-key{display:none}.action-hint{font-size:7px;margin-top:4px}.controls-help{display:none}.touch-controls{display:flex;position:absolute;z-index:5;bottom:213px;left:14px;right:14px;align-items:end;justify-content:space-between;pointer-events:none}.joystick-base{touch-action:none;pointer-events:auto;width:94px;height:94px;border:1px solid #c5dedb55;border-radius:50%;background:#0a1f29aa;display:grid;place-items:center}.joystick-base:before{content:'';width:54px;height:54px;border:1px solid #829ca855;position:absolute;border-radius:50%}.joystick-thumb{width:36px;height:36px;border-radius:50%;background:#dcb07bce;border:2px solid #ffe0a4;box-shadow:0 0 20px #0008;position:relative;transform:translate(0,0)}.touch-right{display:flex;gap:9px;align-items:end;pointer-events:auto}.round-control{border:1px solid #9babb3aa;background:#0d2634cf;color:#e5efed;border-radius:50%;width:53px;height:53px;font-size:22px;display:flex;flex-direction:column;align-items:center;justify-content:center}.round-control small{font:8px 'DM Mono',monospace}.round-control.primary{width:67px;height:67px;border-color:var(--orange);background:#b98140dc;color:#fff}.intro-card,.help-card,.victory-card{padding:22px}.intro-card h1{font-size:76px}.intro-top{font-size:7px}.intro-top span{font-size:7px}.intro-stats span{font-size:7px}.intro-card>p{font-size:12px}.intro-foot{font-size:7px}.help-grid{gap:7px}.help-grid>div{padding:9px}.toast-container{top:58px}}
 @media(max-width:370px){.mission-panel{width:54vw}.right-panel{width:35vw}.map-legend{display:none}.objective-detail{display:none}.operation-desc{display:none}.objective{margin-top:4px}.mission-tip{font-size:7px}.touch-controls{bottom:188px}.telemetry-data>div:last-child{display:none}.fleet-role{display:none}}
 @media(max-height:590px) and (orientation:landscape){.mission-panel{top:58px;max-height:40vh;overflow:auto}.right-panel{top:58px;width:130px}#minimap{max-height:100px}.bottom-hud{bottom:6px;grid-template-columns:1fr 120px 155px}.fleet-panel{grid-column:auto}.touch-controls{bottom:88px}.joystick-base{width:70px;height:70px}.intro-card{padding:14px 24px}.intro-card h1{font-size:50px;margin:8px 0}.intro-stats,.intro-rule{margin:8px 0;padding:7px}.intro-card>p{margin:6px 0}.intro-foot{margin-top:6px}}
+
+/* v2: phone/tablet driving pad and independent throttle/reverse pedals. */
+.mobile-instructions{display:none}
+.touch-controls button{user-select:none;-webkit-user-select:none;-webkit-touch-callout:none;touch-action:none}
+@media (max-width:860px), (hover:none) and (pointer:coarse){
+  .touch-controls{display:flex;position:absolute;z-index:8;left:max(12px,env(safe-area-inset-left));right:max(12px,env(safe-area-inset-right));bottom:calc(194px + env(safe-area-inset-bottom));justify-content:space-between;align-items:end;gap:10px;pointer-events:none}
+  .touch-left{display:flex;flex-direction:column;align-items:center;gap:5px;pointer-events:none}
+  .joystick-base{position:relative;width:112px;height:112px;border:2px solid #acc4c46e;border-radius:50%;background:radial-gradient(circle,#142d36e8,#0c202ac9);box-shadow:0 8px 26px #0008;display:grid;place-items:center;touch-action:none;pointer-events:auto;user-select:none;-webkit-user-select:none}
+  .joystick-base:before{content:'';position:absolute;width:61px;height:61px;border:1px solid #8ca4a466;border-radius:50%;pointer-events:none}
+  .joystick-thumb{width:39px;height:39px;z-index:1;pointer-events:none}
+  .pad-arrow{position:absolute;font:12px 'DM Mono',monospace;color:#9cb8bba8;pointer-events:none}
+  .pad-up{top:7px}.pad-down{bottom:7px}.pad-left{left:7px}.pad-right{right:7px}
+  .touch-caption{color:#d0dfdc;text-shadow:0 2px 5px #000;font:9px 'DM Mono',monospace;letter-spacing:.5px}
+  .touch-right{display:flex;gap:10px;align-items:end;pointer-events:none}
+  .pedal-controls{display:flex;flex-direction:column;gap:8px;pointer-events:auto}
+  .pedal{width:88px;height:57px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;border-radius:11px;border:1px solid #b6d0cf9b;background:#142e38ed;color:#f4f7f2;font:700 11px 'Barlow Condensed',sans-serif;letter-spacing:1.2px;touch-action:none;box-shadow:0 5px 18px #0007}
+  .pedal-icon{font:14px/1 'DM Mono',monospace}
+  .pedal-drive{border-color:#97d3a3cc;background:#245641e8}.pedal-reverse{border-color:#dfb27acc;background:#55402ee8}
+  .pedal.pressed{transform:scale(.94);filter:brightness(1.5);box-shadow:inset 0 0 14px #0008}
+  .utility-controls{display:flex;flex-direction:column;align-items:center;gap:8px;pointer-events:auto}
+  .round-control{width:56px;height:56px;border:1px solid #aac2c4b0;background:#0d2634ef;border-radius:50%;color:#e5efed;font-size:22px;display:flex;flex-direction:column;align-items:center;justify-content:center;touch-action:manipulation;box-shadow:0 5px 18px #0007}
+  .round-control small{font:8px/1.2 'DM Mono',monospace;letter-spacing:.3px}
+  .round-control.primary{width:70px;height:70px;border:2px solid var(--orange);background:#a66d32ed;color:white}
+  .round-control.primary:disabled{opacity:.63;border-color:#75858a;background:#2f4449;color:#a6b6b5}
+  .mobile-instructions{display:block;position:absolute;z-index:7;bottom:calc(179px + env(safe-area-inset-bottom));left:0;right:0;text-align:center;font:8px 'DM Mono',monospace;letter-spacing:.4px;color:#e2e9e6;text-shadow:0 2px 5px #000;pointer-events:none}
+  .bottom-hud{bottom:max(7px,env(safe-area-inset-bottom));left:max(9px,env(safe-area-inset-left));right:max(9px,env(safe-area-inset-right));grid-template-columns:1fr 1fr;gap:6px}
+  .fleet-panel{grid-column:1/-1;padding:7px}.fleet{margin-top:7px;gap:5px}.fleet-item{min-height:39px;touch-action:manipulation}.fleet-index,.fleet-shortcut{display:none}
+  .telemetry,.action-panel{padding:7px}.action-btn{min-height:36px;margin-top:6px}.action-key{display:none}
+  .mission-panel{max-height:220px;overflow:auto}
+  .right-panel{max-height:205px;overflow:hidden}
+  .controls-help{display:none}
+}
+@media (max-width:450px) and (orientation:portrait){
+  .mission-panel{width:53vw;max-height:205px}.right-panel{width:37vw;max-height:185px}
+  .operation-name{margin:6px 0;font-size:18px}.operation-desc,.objective-detail,.mission-tip{display:none}
+  .objective{padding:4px 2px;margin:0}.objectives{gap:3px}.objective-title{font-size:8px}
+  .map-legend,.conditions{display:none}
+  .bottom-hud .action-hint{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .fleet-icon{font-size:16px}.fleet-name{font-size:12px}
+  .mobile-instructions{font-size:7px}
+}
+/* Landscape phones often have CSS widths >760px, so a width-only media query misses them. */
+@media (max-height:610px) and (orientation:landscape) and ((pointer:coarse) or (max-width:860px)){
+  .topbar{height:49px;padding:5px max(13px,env(safe-area-inset-right)) 5px max(13px,env(safe-area-inset-left))}
+  .brand-icon{height:30px;width:28px}.brand-title{font-size:20px}.eyebrow{font-size:7px}.brand-title small{display:none}
+  .top-chip,.top-button span{display:none}.top-button{padding:0;width:32px;justify-content:center}
+  .mission-panel{top:51px;left:max(8px,env(safe-area-inset-left));width:185px;max-height:43vh;padding:7px;overflow:auto}
+  .operation-name{font-size:17px;margin:6px 0}.operation-desc,.mission-tip,.objective-detail{display:none}.objective{padding:3px;gap:4px}.objectives{gap:2px}.objective-title{font-size:8px}.objective-number{width:17px;min-width:17px;height:17px;font-size:8px}.mission-progress{margin-top:5px}
+  .right-panel{top:51px;right:max(8px,env(safe-area-inset-right));width:125px;max-height:42vh;padding:6px}
+  #minimap{margin:5px 0;max-height:80px;object-fit:contain}.conditions,.map-legend,.map-scale{display:none}
+  .bottom-hud{bottom:max(4px,env(safe-area-inset-bottom));left:max(8px,env(safe-area-inset-left));right:max(8px,env(safe-area-inset-right));grid-template-columns:1fr 115px 148px;gap:5px}
+  .fleet-panel{grid-column:auto}.fleet-panel,.telemetry,.action-panel{padding:5px}
+  .fleet{gap:2px;margin-top:4px}.fleet-item{min-height:31px;padding:4px 2px}.fleet-icon{display:none}.fleet-name{font-size:11px}.fleet-role{display:none}.fleet-index{display:none}
+  .telemetry>strong{font-size:14px;margin:2px 0}.telemetry-data>div:last-child{display:none}.action-btn{min-height:28px;font-size:12px}.action-hint{display:none}
+  .touch-controls{bottom:calc(71px + env(safe-area-inset-bottom));left:max(12px,env(safe-area-inset-left));right:max(12px,env(safe-area-inset-right))}
+  .joystick-base{width:88px;height:88px}.joystick-base:before{width:48px;height:48px}.joystick-thumb{width:32px;height:32px}
+  .touch-caption,.mobile-instructions{display:none}
+  .pedal{width:75px;height:44px;font-size:10px}.pedal-controls{gap:5px}
+  .round-control{width:43px;height:43px;font-size:17px}.round-control.primary{width:54px;height:54px}.utility-controls{gap:5px}
+  .intro-card,.help-card,.victory-card{max-height:95dvh;padding:10px 18px}.intro-card h1{font-size:55px;margin:6px 0 10px}.intro-card>p{margin:6px 0;font-size:10px}.intro-stats,.intro-rule{margin:7px 0;padding:7px 0}
+}
+@media (max-height:470px) and (orientation:portrait){
+  .mission-panel,.right-panel{max-height:22vh}.mobile-instructions{display:none}.touch-controls{bottom:calc(129px + env(safe-area-inset-bottom))}.joystick-base{width:82px;height:82px}.round-control.primary{height:52px;width:52px}.pedal{height:43px}
+}

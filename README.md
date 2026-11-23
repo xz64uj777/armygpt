@@ -51,3 +51,8 @@ python3 -m http.server 8080
 Vanilla HTML, CSS, JavaScript, and **Three.js 0.171.0** via CDN. No compilation or build step. All vehicles and terrain are generated from geometry in `game.js`.
 
 This is a fictional single-player game, not an engineering training or tactical simulation.
+
+
+## Mobile controls (phones and tablets)
+
+The game offers onscreen analog steering, **hold DRIVE** and **hold REVERSE** pedals, a contextual **WORK** button, and **CAM** to change views. Drag a finger across the terrain to rotate the camera and pinch to zoom. Tap any asset in the bottom bar to switch vehicles. The analog pad also supports pushing up/down to drive without pedals. Controls appear automatically on touch-capable landscape or portrait screens, not just narrow phones. Press-and-hold controls stop on release, cancelled touch, or lost window focus.

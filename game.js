@@ -5,7 +5,8 @@ const ui = Object.fromEntries([
   'scene','loader','minimap','objectives','missionCount','missionTip','progressFill','fleet','activeUnit',
   'speedValue','headingValue','actionButton','actionText','actionHint','startOverlay','startButton',
   'helpButton','helpOverlay','closeHelp','helpDone','weatherButton','weatherLabel','soundButton',
-  'convoyLabel','cameraButton','mobileActionButton','joystick','joystickThumb','touchControls',
+  'convoyLabel','cameraButton','mobileActionButton','mobileActionLabel','joystick','joystickThumb','touchControls',
+  'forwardButton','reverseButton',
   'centerNotice','targetMarker','victoryOverlay','victoryTime','restartButton','toasts'
 ].map((name) => [name, $(name)]));
 
@@ -104,7 +105,7 @@ function terrainHeight(x,z){
 }
 function groundY(x,z){return terrainHeight(x,z);}
 function driveY(x,z){
-  const bridgeBuilt=bridge.visible;
+  const bridgeBuilt=typeof objectives!=='undefined' && objectives[1]?.done;
   if (!bridgeBuilt || Math.abs(x)>7.1 || z<=11 || z>=36) return groundY(x,z);
   const blend=smooth(11,15,z)*(1-smooth(32,36,z));
   return lerp(groundY(x,z),1.34,blend);
@@ -347,7 +348,7 @@ const objectives=[
   {id:'dispatch',title:'ESCORT THE CONVOY',detail:'DISPATCH / SECURE NORTH ROAD',unit:null,x:0,z:-78,radius:9999,done:false}
 ];
 const state={started:false,won:false,selected:0,working:null,workTime:0,workDuration:2.65,bridgeBuild:-1,convoy:false,storm:false,sound:false,cameraMode:0,orbit:.55,pitch:.79,distance:46,elapsed:0,noticeUntil:0,lastWarning:0};
-const input={keys:new Set(),forward:0,steer:0};
+const input={keys:new Set(),forward:0,steer:0,pedalForward:0,pedalReverse:0};
 let audioContext=null;
 function beep(freq=220,duration=.12){
   if(!state.sound) return;
@@ -414,6 +415,8 @@ function updateAction(){
   ui.actionHint.textContent=a.hint;
   ui.actionButton.disabled=a.disabled;
   ui.mobileActionButton.disabled=a.disabled;
+  ui.mobileActionLabel.textContent=state.working?'BUSY':a.objective?.id==='dispatch'?'CONVOY':a.label==='DEPLOY BRIDGE'?'BRIDGE':a.label==='RECOVER ASSET'?'RECOVER':a.label==='CLEAR DEBRIS'?'CLEAR':'WORK';
+  ui.mobileActionButton.setAttribute('aria-label',a.label);
 }
 function startAction(){
   if(!state.started||state.won)return;
@@ -451,11 +454,28 @@ function finishAction(obj){
   renderObjectives();updateAction();beep(650,.35);
   if(objectives.slice(0,3).every(o=>o.done))toast('ALL FIELD OBJECTIVES COMPLETE — DISPATCH AVAILABLE');
 }
-const orbit={drag:false,x:0,y:0,pointer:null};
-ui.scene.addEventListener('pointerdown',e=>{if(!state.started)return;orbit.drag=true;orbit.pointer=e.pointerId;orbit.x=e.clientX;orbit.y=e.clientY;ui.scene.setPointerCapture(e.pointerId);});
-ui.scene.addEventListener('pointermove',e=>{if(!orbit.drag||e.pointerId!==orbit.pointer)return;const dx=e.clientX-orbit.x,dy=e.clientY-orbit.y;orbit.x=e.clientX;orbit.y=e.clientY;state.orbit-=dx*.006;state.pitch=clamp(state.pitch+dy*.004,.22,1.36);});
-const releaseOrbit=e=>{if(e.pointerId===orbit.pointer)orbit.drag=false;};
+// Drag to orbit the scene, or pinch two fingers to zoom (works with a thumb on the drive controls).
+const orbit={pointers:new Map(),lastPinch:0};
+ui.scene.addEventListener('pointerdown',e=>{
+  if(!state.started)return;
+  orbit.pointers.set(e.pointerId,{x:e.clientX,y:e.clientY});
+  if(orbit.pointers.size===2){const [a,b]=[...orbit.pointers.values()];orbit.lastPinch=Math.hypot(a.x-b.x,a.y-b.y);}
+  ui.scene.setPointerCapture(e.pointerId);
+});
+ui.scene.addEventListener('pointermove',e=>{
+  const last=orbit.pointers.get(e.pointerId);if(!last)return;
+  const dx=e.clientX-last.x,dy=e.clientY-last.y;
+  orbit.pointers.set(e.pointerId,{x:e.clientX,y:e.clientY});
+  if(orbit.pointers.size===1){state.orbit-=dx*.006;state.pitch=clamp(state.pitch+dy*.004,.22,1.36);}
+  else if(orbit.pointers.size===2){
+    const [a,b]=[...orbit.pointers.values()],distance=Math.hypot(a.x-b.x,a.y-b.y);
+    if(orbit.lastPinch>0)state.distance=clamp(state.distance-(distance-orbit.lastPinch)*.12,15,110);
+    orbit.lastPinch=distance;
+  }
+});
+const releaseOrbit=e=>{orbit.pointers.delete(e.pointerId);orbit.lastPinch=0;};
 ui.scene.addEventListener('pointerup',releaseOrbit);ui.scene.addEventListener('pointercancel',releaseOrbit);
+ui.scene.addEventListener('lostpointercapture',releaseOrbit);
 ui.scene.addEventListener('wheel',e=>{e.preventDefault();state.distance=clamp(state.distance+e.deltaY*.035,15,110);},{passive:false});
 const keyDown=e=>{
   if(['INPUT','TEXTAREA'].includes(document.activeElement?.tagName))return;
@@ -470,12 +490,13 @@ const keyDown=e=>{
 };
 window.addEventListener('keydown',keyDown);
 window.addEventListener('keyup',e=>input.keys.delete(e.key.toLowerCase()));
-window.addEventListener('blur',()=>{input.keys.clear();input.forward=0;input.steer=0;ui.joystickThumb.style.transform='translate(0,0)';});
+window.addEventListener('blur',()=>{input.keys.clear();resetTouchInputs();orbit.pointers.clear();});
+document.addEventListener('visibilitychange',()=>{if(document.hidden)resetTouchInputs();});
 ui.actionButton.addEventListener('click',startAction);
 ui.mobileActionButton.addEventListener('click',startAction);
 function cycleCamera(){state.cameraMode=(state.cameraMode+1)%3;state.distance=[46,25,82][state.cameraMode];state.pitch=[.79,.4,1.25][state.cameraMode];toast(['TACTICAL CHASE CAMERA','LOW-LEVEL FOLLOW CAMERA','HIGH-ALTITUDE COMMAND CAMERA'][state.cameraMode]);}
 ui.cameraButton.addEventListener('click',cycleCamera);
-function toggleHelp(){ui.helpOverlay.classList.toggle('hidden');}
+function toggleHelp(){resetTouchInputs();ui.helpOverlay.classList.toggle('hidden');}
 ui.helpButton.addEventListener('click',toggleHelp);
 ui.closeHelp.addEventListener('click',toggleHelp);
 ui.helpDone.addEventListener('click',toggleHelp);
@@ -506,22 +527,53 @@ function start(){
 ui.startButton.addEventListener('click',start);
 ui.restartButton.addEventListener('click',()=>location.reload());
 
-// Mobile dual-axis joystick: move your thumb to drive and steer.
+// Mobile analog pad plus independent hold-to-drive pedals. Each uses pointer capture,
+// so fingers can move off buttons without leaving the vehicle accelerating forever.
 let joyId=null;
+function resetTouchInputs(){
+  joyId=null;input.forward=0;input.steer=0;input.pedalForward=0;input.pedalReverse=0;
+  ui.joystickThumb.style.transform='translate(0,0)';
+  ui.forwardButton.classList.remove('pressed');ui.reverseButton.classList.remove('pressed');
+}
 function joystickMove(e){
   if(e.pointerId!==joyId)return;
   const bounds=ui.joystick.getBoundingClientRect();
   const cx=bounds.left+bounds.width/2,cy=bounds.top+bounds.height/2;
   let dx=e.clientX-cx,dy=e.clientY-cy;
-  const limit=bounds.width*.31,len=Math.hypot(dx,dy);
+  const limit=bounds.width*.32,len=Math.hypot(dx,dy);
   if(len>limit){dx*=limit/len;dy*=limit/len;}
-  input.steer=dx/limit;input.forward=-dy/limit;
+  const deadzone=.13;
+  input.steer=Math.abs(dx/limit)<deadzone?0:dx/limit;
+  input.forward=Math.abs(dy/limit)<deadzone?0:-dy/limit;
   ui.joystickThumb.style.transform=`translate(${dx}px,${dy}px)`;
 }
-ui.joystick.addEventListener('pointerdown',e=>{e.preventDefault();joyId=e.pointerId;ui.joystick.setPointerCapture(e.pointerId);joystickMove(e);});
+ui.joystick.addEventListener('pointerdown',e=>{
+  if(!state.started||joyId!==null)return;
+  e.preventDefault();joyId=e.pointerId;ui.joystick.setPointerCapture(e.pointerId);joystickMove(e);
+});
 ui.joystick.addEventListener('pointermove',joystickMove);
-function joystickEnd(e){if(e.pointerId!==joyId)return;joyId=null;input.steer=0;input.forward=0;ui.joystickThumb.style.transform='translate(0,0)';}
-ui.joystick.addEventListener('pointerup',joystickEnd);ui.joystick.addEventListener('pointercancel',joystickEnd);
+function joystickEnd(e){
+  if(e.pointerId!==joyId)return;
+  joyId=null;input.steer=0;input.forward=0;ui.joystickThumb.style.transform='translate(0,0)';
+}
+for(const event of ['pointerup','pointercancel','lostpointercapture'])ui.joystick.addEventListener(event,joystickEnd);
+function bindPedal(el,key){
+  let pointer=null;
+  el.addEventListener('pointerdown',e=>{
+    if(!state.started||state.won||pointer!==null)return;
+    e.preventDefault();pointer=e.pointerId;el.setPointerCapture(pointer);
+    input[key]=1;el.classList.add('pressed');
+  });
+  function release(e){
+    if(e.pointerId!==pointer)return;
+    pointer=null;input[key]=0;el.classList.remove('pressed');
+  }
+  for(const event of ['pointerup','pointercancel','lostpointercapture'])el.addEventListener(event,release);
+  window.addEventListener('blur',()=>{pointer=null;input[key]=0;el.classList.remove('pressed');});
+  document.addEventListener('visibilitychange',()=>{if(document.hidden){pointer=null;input[key]=0;el.classList.remove('pressed');}});
+}
+bindPedal(ui.forwardButton,'pedalForward');
+bindPedal(ui.reverseButton,'pedalReverse');
 
 // Tactical minimap. The projected corridor is 120 metres wide and 240 metres long.
 const map=ui.minimap.getContext('2d');
@@ -575,7 +627,8 @@ function update(dt){
   state.elapsed+=dt;
   if(!state.started||state.won)return;
   const u=active();
-  const throttle=clamp((input.keys.has('w')||input.keys.has('arrowup')?1:0)-(input.keys.has('s')||input.keys.has('arrowdown')?1:0)+input.forward,-1,1);
+  const pedal=input.pedalForward-input.pedalReverse;
+  const throttle=clamp((input.keys.has('w')||input.keys.has('arrowup')?1:0)-(input.keys.has('s')||input.keys.has('arrowdown')?1:0)+(pedal||input.forward),-1,1);
   const steering=clamp((input.keys.has('d')||input.keys.has('arrowright')?1:0)-(input.keys.has('a')||input.keys.has('arrowleft')?1:0)+input.steer,-1,1);
   if(!state.working){
     const desired=throttle*u.maxSpeed*(throttle<0?.52:1);
