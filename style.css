@@ -68,3 +68,4 @@
 @media (max-height:470px) and (orientation:portrait){
   .mission-panel,.right-panel{max-height:22vh}.mobile-instructions{display:none}.touch-controls{bottom:calc(129px + env(safe-area-inset-bottom))}.joystick-base{width:82px;height:82px}.round-control.primary{height:52px;width:52px}.pedal{height:43px}
 }
+.startup-failure{width:min(410px,calc(100vw - 36px));text-align:center;padding:25px;border:1px solid #e39950;background:#0c2029;color:#e9f1ec;font:13px/1.5 system-ui,sans-serif;letter-spacing:0;box-shadow:0 14px 45px #0008}.startup-failure h2{font-size:17px;color:#ffb566;letter-spacing:.07em}.startup-failure p{color:#b9cbd0}.startup-failure code{display:block;overflow-wrap:anywhere;font:11px/1.6 monospace;color:#f0c7a9;margin:14px 0}.startup-failure button{background:#ffb566;color:#102028;border:0;font-weight:800;padding:12px 22px;min-height:46px}.startup-failure button:active{transform:scale(.98)}

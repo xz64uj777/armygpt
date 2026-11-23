@@ -4,14 +4,17 @@ A playable, single-player **3D military engineering sandbox** built for the brow
 
 ## Play
 
-Open **`index.html`** in a modern browser (or host the directory as a static website). The Three.js engine loads from a public CDN, so an internet connection is needed on first load. Works on desktop and modern mobile browsers.
+Play the production deployment at https://armygpt-iron-pass.vercel.app/. The engine is packaged with the game, so it no longer depends on third-party CDNs at startup. Works on desktop and modern mobile browsers.
 
-A local development server is recommended:
+For development:
 
 ```bash
-python3 -m http.server 8080
-# visit http://localhost:8080
+npm install
+npm run dev
+# open the local URL printed by Vite
 ```
+
+For a production build run `npm run build` (output in `dist/`). This is a Vite application.
 
 ## Mission: Operation Breakthrough
 
@@ -48,7 +51,7 @@ python3 -m http.server 8080
 
 ## Technology
 
-Vanilla HTML, CSS, JavaScript, and **Three.js 0.171.0** via CDN. No compilation or build step. All vehicles and terrain are generated from geometry in `game.js`.
+Vanilla HTML, CSS, JavaScript, **Three.js 0.171.0**, and **Vite** to bundle the engine locally. All vehicles and terrain are generated from geometry in `game.js`.
 
 This is a fictional single-player game, not an engineering training or tactical simulation.
 

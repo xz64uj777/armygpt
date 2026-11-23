@@ -10,29 +10,17 @@ const ui = Object.fromEntries([
   'centerNotice','targetMarker','victoryOverlay','victoryTime','restartButton','toasts'
 ].map((name) => [name, $(name)]));
 
-let THREE;
-try {
-  THREE = await import('https://cdn.jsdelivr.net/npm/three@0.171.0/build/three.module.js');
-} catch (primaryError) {
-  try { THREE = await import('https://unpkg.com/three@0.171.0/build/three.module.js'); }
-  catch (fallbackError) {
-    ui.loader.classList.add('hidden');
-    const failure = document.createElement('div');
-    failure.className = 'fatal';
-    failure.textContent = '3D engine could not load. Check your internet connection and reload the simulation.';
-    document.body.append(failure);
-    throw fallbackError;
-  }
-}
+import * as THREE from 'three';
 
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x8199a0);
 scene.fog = new THREE.FogExp2(0x8199a0, 0.0042);
 const camera = new THREE.PerspectiveCamera(58, window.innerWidth / window.innerHeight, .1, 650);
-const renderer = new THREE.WebGLRenderer({ canvas: ui.scene, antialias: true, powerPreference: 'high-performance' });
+const lowPower = matchMedia('(max-width: 800px), (pointer: coarse)').matches;
+const renderer = new THREE.WebGLRenderer({ canvas: ui.scene, antialias: !lowPower, powerPreference: lowPower ? 'low-power' : 'high-performance' });
 renderer.setSize(window.innerWidth, window.innerHeight);
-renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.65));
-renderer.shadowMap.enabled = true;
+renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, lowPower ? 1.15 : 1.65));
+renderer.shadowMap.enabled = !lowPower;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = 1.4;
@@ -43,7 +31,7 @@ scene.add(hemi);
 const sun = new THREE.DirectionalLight(0xffe2b0, 3.2);
 sun.position.set(-65, 105, -54);
 sun.castShadow = true;
-sun.shadow.mapSize.set(2048, 2048);
+sun.shadow.mapSize.set(lowPower ? 1024 : 2048, lowPower ? 1024 : 2048);
 sun.shadow.camera.left = -120;
 sun.shadow.camera.right = 120;
 sun.shadow.camera.top = 145;
@@ -708,9 +696,16 @@ function resize(){
   camera.fov=window.innerWidth<760?62:58;
   camera.updateProjectionMatrix();
   renderer.setSize(window.innerWidth,window.innerHeight);
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio||1,1.65));
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio||1, lowPower ? 1.15 : 1.65));
 }
 window.addEventListener('resize',resize);
 renderFleet();
-ui.loader.classList.add('hidden');
-requestAnimationFrame(drawFrame);
+requestAnimationFrame((now) => {
+  try {
+    drawFrame(now);
+    window.markGameReady?.();
+  } catch (error) {
+    window.reportStartupFailure?.(error?.message || 'Unable to render 3D scene.');
+    throw error;
+  }
+});
