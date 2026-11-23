@@ -59,3 +59,9 @@ This is a fictional single-player game, not an engineering training or tactical 
 ## Mobile controls (phones and tablets)
 
 The game offers onscreen analog steering, **hold DRIVE** and **hold REVERSE** pedals, a contextual **WORK** button, and **CAM** to change views. Drag a finger across the terrain to rotate the camera and pinch to zoom. Tap any asset in the bottom bar to switch vehicles. The analog pad also supports pushing up/down to drive without pedals. Controls appear automatically on touch-capable landscape or portrait screens, not just narrow phones. Press-and-hold controls stop on release, cancelled touch, or lost window focus.
+## Phase II — Diggable earthworks
+
+- **E390 Tactical Excavator:** select with **4** or the fourth fleet button. Drive off the road, then press **WORK / DIG** to excavate soil.
+- Each cycle deforms the ground into a cut and spoil mound. Repeated passes deepen the trench, and the tactical map displays disturbed soil.
+- After the convoy reaches the base, choose **CONTINUE IN FREEPLAY** to keep driving and excavating.
+- Excavation is restricted away from the road and river crossing to protect mission geometry.
