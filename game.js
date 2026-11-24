@@ -2,7 +2,7 @@
 // A self-contained, procedural 3D field engineering scenario. No external art assets.
 const $ = (id) => document.getElementById(id);
 const ui = Object.fromEntries([
-  'scene','loader','minimap','objectives','missionCount','missionTip','progressFill','fleet','activeUnit',
+  'scene','loader','minimap','objectives','missionCount','missionTip','progressFill','fleet','fleetToggle','fleetToggleLabel','activeUnit',
   'speedValue','headingValue','actionButton','actionText','actionHint','startOverlay','startButton',
   'helpButton','helpOverlay','closeHelp','helpDone','weatherButton','weatherLabel','soundButton',
   'convoyLabel','cameraButton','mobileActionButton','mobileActionLabel','joystick','joystickThumb','touchControls',
@@ -533,6 +533,32 @@ function toast(message){
   beep(370,.13);
 }
 function active(){return units[state.selected];}
+// Contact range follows the rear wheel-lift and the disabled truck's front axle.
+function towHookDistance(){
+  const rig=units[2];
+  const hitchX=rig.x-Math.sin(rig.heading)*5.1;
+  const hitchZ=rig.z-Math.cos(rig.heading)*5.1;
+  const axleX=stranded.x+Math.sin(stranded.heading)*2.55;
+  const axleZ=stranded.z+Math.cos(stranded.heading)*2.55;
+  return Math.hypot(hitchX-axleX,hitchZ-axleZ);
+}
+// The towed vehicle must actually arrive inside the delivery ring.
+function towDropDistance(){
+  return Math.hypot(stranded.x-recoveryDropoff.x,stranded.z-recoveryDropoff.z);
+}
+const HOOK_RANGE=8;
+function closeFleet(){
+  ui.fleet.hidden=true;
+  ui.fleetToggle.setAttribute('aria-expanded','false');
+}
+ui.fleetToggle.addEventListener('click',()=>{
+  const opening=ui.fleet.hidden;
+  ui.fleet.hidden=!opening;
+  ui.fleetToggle.setAttribute('aria-expanded',String(opening));
+});
+document.addEventListener('pointerdown',e=>{
+  if(!e.target.closest('.fleet-panel')&&!ui.fleet.hidden)closeFleet();
+});
 function pending(){return objectives.find(o=>!o.done&&o.id!=='dispatch') || objectives.find(o=>!o.done);}
 function near(u,obj){return Math.hypot(u.x-obj.x,u.z-obj.z)<obj.radius;}
 function renderObjectives(){
@@ -551,7 +577,8 @@ function renderObjectives(){
 }
 function renderFleet(){
   ui.fleet.innerHTML=units.map((u,i)=>`<button class="fleet-item ${i===state.selected?'selected':''}" data-index="${i}" aria-label="Select ${u.name}"><span class="fleet-index">0${i+1}</span><span class="fleet-icon">${u.icon}</span><span class="fleet-name">${u.short}</span><span class="fleet-role">${u.role}</span></button>`).join('');
-  ui.fleet.querySelectorAll('button').forEach(btn=>btn.addEventListener('click',()=>selectVehicle(Number(btn.dataset.index))));
+  ui.fleet.querySelectorAll('button').forEach(btn=>btn.addEventListener('click',()=>{selectVehicle(Number(btn.dataset.index));closeFleet();}));
+  ui.fleetToggleLabel.textContent=active().short;
   ui.activeUnit.textContent=active().name;
   renderObjectives();
 }
@@ -584,8 +611,19 @@ function actionFor(){
   const unit=active();
   const specific=objectives.slice(0,4).find(o=>o.unit===unit.id);
   if(specific&&!specific.done){
+    if(unit.id==='recovery'){
+      const d=stranded.attached?towDropDistance():towHookDistance();
+      const reach=stranded.attached?recoveryDropoff.radius:HOOK_RANGE;
+      const inRange=d<=reach;
+      const bridgeReady=objectives[1].done;
+      return {label:stranded.attached?'DISCONNECT AT NORTH STAGING':'LOWER BOOM / HOOK UP',
+        hint:stranded.attached
+          ? !bridgeReady?'DEPLOY THE M60 BRIDGE FIRST':inRange?'TRUCK INSIDE STAGING — PRESS TOW':'BRING TOWED TRUCK INTO CIRCLE / '+Math.ceil(d)+' M'
+          : inRange?'WHEEL-LIFT AT FRONT AXLE — PRESS TOW':'BACK WHEEL-LIFT TO FRONT AXLE / '+Math.ceil(d)+' M',
+        disabled:!inRange||(stranded.attached&&!bridgeReady),objective:specific};
+    }
     const d=Math.hypot(unit.x-specific.x,unit.z-specific.z);
-    return {label:unit.id==='dozer'?'PUSH DEBRIS':unit.id==='bridge'?'DEPLOY BRIDGE':stranded.attached?'DISCONNECT AT NORTH STAGING':'LOWER BOOM / HOOK UP',hint:d<specific.radius?'IN RANGE — PRESS WORK':stranded.attached?(!objectives[1].done?'DEPLOY THE M60 BRIDGE FIRST':`NORTH BANK / ${Math.ceil(d)} M TO DROPOFF`):`TARGET ${Math.ceil(d)} M AWAY`,disabled:d>=specific.radius||(unit.id==='recovery'&&stranded.attached&&(!objectives[1].done||stranded.z<41)),objective:specific};
+    return {label:unit.id==='dozer'?'PUSH DEBRIS':'DEPLOY BRIDGE',hint:d<specific.radius?'IN RANGE — PRESS WORK':'TARGET '+Math.ceil(d)+' M AWAY',disabled:d>=specific.radius,objective:specific};
   }
   if(objectives.slice(0,4).every(o=>o.done))return {label:'DISPATCH CONVOY',hint:'ROUTE OPEN — AUTHORIZE MOVEMENT',disabled:false,objective:objectives[4]};
   return {label:'UNIT TASK COMPLETE',hint:'SELECT ANOTHER ENGINEER ASSET',disabled:true};
