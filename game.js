@@ -255,6 +255,7 @@ for(let i=0;i<14;i++){
   const size=1.3+rand()*2.35;
   const stone=mesh(debris,new THREE.DodecahedronGeometry(size,0),rand()>.5?MAT.rock:MAT.rockDark,x,groundY(x,z)+size*.65,z);
   stone.rotation.set(rand()*.6,rand()*PI,rand()*.7);stone.scale.y=.7;
+  stone.userData={radius:size*.8,cleared:false};
   stones.push(stone);
 }
 const blockadeX=1,blockadeZ=-35;
@@ -325,7 +326,7 @@ function makeRecovery(){
   box(g,3.5,.25,4.3,MAT.steel,0,2.17,-2.35);
   box(g,1.8,.65,4.4,MAT.oliveLight,0,2.8,-2.2);
   const boom=createGroup(g,0,2.6,-2.25);
-  boom.rotation.x=-.43;
+  boom.rotation.x=.3; // Boom is raised and stowed until the recovery operation.
   box(boom,1.1,1.05,7.2,MAT.olive,0,0,-2.35);
   box(boom,.8,.8,3.2,MAT.steel,0,0,-6);
   const cable=box(boom,.07,2,.07,MAT.steel,0,-1.45,-7.3);
@@ -390,6 +391,36 @@ const recoveryGlow=mesh(scene,new THREE.CylinderGeometry(2.5,2.5,.04,24),new THR
 const convoy=Array.from({length:4},(_,i)=>({mesh:makeConvoyTruck(i===0?MAT.oliveLight:MAT.olive),z:-87-i*9,x:0}));
 for(const truck of convoy){truck.mesh.position.set(truck.x,groundY(truck.x,truck.z)+.11,truck.z);truck.mesh.visible=true;}
 function syncUnit(u){u.mesh.position.set(u.x,driveY(u.x,u.z)+.1,u.z);u.mesh.rotation.y=u.heading;}
+// Physical blade contact pushes individual rocks across the map; debris is only cleared
+// when all rocks have been pushed off the paved corridor onto either shoulder.
+function pushDebrisWithBlade(u,dt){
+  if(u.id!=='dozer'||objectives[0].done||u.speed<=.2)return;
+  const fx=Math.sin(u.heading),fz=Math.cos(u.heading);
+  const bladeX=u.x+fx*5.25,bladeZ=u.z+fz*5.25;
+  for(const rock of stones){
+    if(rock.userData.cleared)continue;
+    const rx=rock.position.x-bladeX,rz=rock.position.z-bladeZ;
+    const ahead=rx*fx+rz*fz,lateral=rx*fz-rz*fx;
+    if(ahead < -1.5||ahead > 3.6+rock.userData.radius||Math.abs(lateral)>4.2+rock.userData.radius*.45)continue;
+    const travel=Math.max(.1,u.speed*dt)*1.18;
+    // A shallow angled blade rolls contacted rock toward the nearest shoulder.
+    const side=Math.sign(rock.position.x-u.x)||Math.sign(rock.position.x)||1;
+    rock.position.x=clamp(rock.position.x+fx*travel+side*travel*.72,-114,114);
+    rock.position.z=clamp(rock.position.z+fz*travel,-113,113);
+    rock.position.y=groundY(rock.position.x,rock.position.z)+rock.userData.radius*.65;
+    rock.rotation.x+=travel*.2;rock.rotation.z+=side*travel*.12;
+    if(Math.abs(rock.position.x)>=9.5){
+      rock.userData.cleared=true;
+      const cleared=stones.filter(s=>s.userData.cleared).length;
+      if(cleared<stones.length)toast(`DEBRIS PUSHED TO SHOULDER — ${cleared}/${stones.length}`);
+    }
+  }
+  if(stones.every(s=>s.userData.cleared)){
+    objectives[0].done=true;markers.clear.visible=false;
+    toast('LANDSLIDE CLEARED BY DOZER — ROAD OPEN');
+    renderObjectives();updateAction();
+  }
+}
 function updateTowedVehicle(){
   if(!stranded.attached)return;
   const rig=units[2],forwardX=Math.sin(rig.heading),forwardZ=Math.cos(rig.heading);
@@ -427,7 +458,7 @@ const markers={
 markers.dispatch.visible=false;
 
 const objectives=[
-  {id:'clear',title:'CLEAR THE LANDSLIDE',detail:'D7 DOZER / SOUTH APPROACH',unit:'dozer',x:1,z:-35,radius:14,done:false},
+  {id:'clear',title:'PUSH LANDSLIDE OFF ROAD',detail:'D7 / DRIVE BLADE INTO ROCKS, PUSH TO SHOULDER',unit:'dozer',x:1,z:-35,radius:14,done:false},
   {id:'bridge',title:'BRIDGE THE RIVER',detail:'M60 / SOUTH BANK',unit:'bridge',x:1,z:7,radius:16,done:false},
   {id:'recover',title:'TOW THE DISABLED VEHICLE',detail:'HEMTT / HOOK UP, THEN DELIVER',unit:'recovery',x:-21,z:-17,radius:11,done:false},
   {id:'earthwork',title:'DIG THE DRAINAGE TRENCH',detail:'E390 / EAST ROAD SHOULDER',unit:'excavator',x:28,z:-42,radius:8,done:false},
@@ -497,13 +528,17 @@ function actionFor(){
     if(!state.convoy&&!state.won&&objectives.slice(0,4).every(o=>o.done))return {label:'DISPATCH CONVOY',hint:'ESCORT FROM THE ROAD — CLEAR PARKED MACHINES',disabled:false,objective:objectives[4]};
     return {label:'EXCAVATE SOIL',hint:canExcavate(active())?'FREE DIG / '+state.earthMoved+' m³ MOVED':'MOVE OFF ROAD TO EXCAVATE',disabled:!canExcavate(active()),objective:{id:'excavate'}};
   }
+  if(active().id==='dozer'&&!objectives[0].done){
+    const cleared=stones.filter(s=>s.userData.cleared).length;
+    return {label:'PUSH ROCKS WITH BLADE',hint:`${cleared}/${stones.length} OFF ROAD — DRIVE FORWARD AND STEER TOWARD THE SHOULDER`,disabled:true,objective:objectives[0]};
+  }
   if(state.won)return {label:'FREE ROAM',hint:'SELECT EXCAVATOR FOR EARTHWORKS',disabled:true};
   if(state.convoy)return {label:'CONVOY FOLLOWING',hint:state.convoyStatus+' — DRIVE NORTH / CLEAR ROAD',disabled:true};
   const unit=active();
   const specific=objectives.slice(0,4).find(o=>o.unit===unit.id);
   if(specific&&!specific.done){
     const d=Math.hypot(unit.x-specific.x,unit.z-specific.z);
-    return {label:unit.id==='dozer'?'CLEAR DEBRIS':unit.id==='bridge'?'DEPLOY BRIDGE':stranded.attached?'DROP OFF RECOVERED TRUCK':'HOOK UP DISABLED TRUCK',hint:d<specific.radius?'IN RANGE — PRESS WORK':`TARGET ${Math.ceil(d)} M AWAY`,disabled:d>=specific.radius,objective:specific};
+    return {label:unit.id==='dozer'?'PUSH DEBRIS':unit.id==='bridge'?'DEPLOY BRIDGE':stranded.attached?'DROP OFF RECOVERED TRUCK':'LOWER BOOM / HOOK UP',hint:d<specific.radius?'IN RANGE — PRESS WORK':`TARGET ${Math.ceil(d)} M AWAY`,disabled:d>=specific.radius,objective:specific};
   }
   if(objectives.slice(0,4).every(o=>o.done))return {label:'DISPATCH CONVOY',hint:'ROUTE OPEN — AUTHORIZE MOVEMENT',disabled:false,objective:objectives[4]};
   return {label:'UNIT TASK COMPLETE',hint:'SELECT ANOTHER ENGINEER ASSET',disabled:true};
@@ -514,7 +549,7 @@ function updateAction(){
   ui.actionHint.textContent=a.hint;
   ui.actionButton.disabled=a.disabled;
   ui.mobileActionButton.disabled=a.disabled;
-  ui.mobileActionLabel.textContent=state.working?'BUSY':['excavate','earthwork'].includes(a.objective?.id)?'DIG':a.objective?.id==='dispatch'?'CONVOY':a.label==='DEPLOY BRIDGE'?'BRIDGE':a.objective?.id==='recover'?'TOW':a.label==='CLEAR DEBRIS'?'CLEAR':'WORK';
+  ui.mobileActionLabel.textContent=state.working?'BUSY':['excavate','earthwork'].includes(a.objective?.id)?'DIG':a.objective?.id==='dispatch'?'CONVOY':a.label==='DEPLOY BRIDGE'?'BRIDGE':a.objective?.id==='recover'?'TOW':a.objective?.id==='clear'?'PUSH':'WORK';
   ui.mobileActionButton.setAttribute('aria-label',a.label);
 }
 function startAction(){
@@ -554,10 +589,7 @@ function finishAction(obj){
   }
   obj.done=true;
   markers[obj.id].visible=false;
-  if(obj.id==='clear'){
-    stones.forEach((s,i)=>{s.visible=false;});
-    toast('LANDSLIDE CLEARED — SOUTH ROAD OPEN');
-  }
+  if(obj.id==='clear')toast('LANDSLIDE CLEARED — SOUTH ROAD OPEN');
   if(obj.id==='bridge'){
     bridge.visible=true;state.bridgeBuild=0;
     toast('MODULAR BRIDGE DEPLOYING — CROSSING SECURED');
@@ -803,13 +835,14 @@ function update(dt){
   }else{
     u.speed=THREE.MathUtils.damp(u.speed,0,7,dt);
     state.workTime+=dt;
-    if(state.working.id==='clear'){
-      const count=Math.floor(state.workTime/state.workDuration*stones.length);
-      stones.forEach((s,i)=>{if(i<count)s.visible=false;});
-    }
     if(state.workTime>=state.workDuration)finishAction(state.working);
   }
   syncUnit(u);
+  pushDebrisWithBlade(u,dt);
+  const recoveryBoom=units[2].mesh.userData.boom;
+  // Raise for transport, lower while connecting/towing, raise after release.
+  const boomLowered=stranded.attached||state.working?.id==='recover';
+  recoveryBoom.rotation.x=THREE.MathUtils.damp(recoveryBoom.rotation.x,boomLowered?-.43:.3,3.8,dt);
   const arm=units[3].mesh.userData;
   const motion=['excavate','earthwork'].includes(state.working?.id)?Math.sin(state.workTime/state.workDuration*PI):0;
   arm.boom.rotation.x=-.36+.26*motion;
@@ -822,27 +855,34 @@ function update(dt){
     if(state.bridgeBuild>=8*.27){state.bridgeBuild=-1;bridgeSegments.forEach(g=>g.visible=true);}
   }
   if(state.convoy){
-    // Advance on the cleared corridor only when the player's current machine leads.
-    // Obstructing parked heavy equipment stops the convoy instead of being ghosted.
     const escort=units[state.escortIndex],onRoad=Math.abs(escort.x)<=6.5,spacing=12,escortGap=16;
-    let status=onRoad?'FOLLOWING ESCORT':'ESCORT OFF ROAD';
+    // Once the escort reaches the far bank, the convoy can complete the crossing
+    // without requiring the player to keep driving to the map boundary.
+    const escortAcross=onRoad&&escort.z>=43;
+    let status=!onRoad?'ESCORT OFF ROAD':escortAcross?'CROSSING NORTH':'FOLLOWING ESCORT';
     let allArrived=true;
     convoy.forEach((truck,i)=>{
       const destination=98-i*spacing;
-      const leaderLimit=i===0?escort.z-escortGap:convoy[i-1].z-spacing;
+      const leaderLimit=i===0?(escortAcross?destination:escort.z-escortGap):convoy[i-1].z-spacing;
       const progressLimit=Math.min(destination,leaderLimit);
       if(truck.z<destination-.1){
         allArrived=false;
         if(!onRoad||progressLimit<=truck.z+.02){
-          if(onRoad&&status!=='ROAD BLOCKED')status='WAITING FOR ESCORT';
+          if(onRoad)status='WAITING FOR ESCORT';
         }else{
-          const roadBlock=units.find(machine=>
-            machine!==escort&&Math.abs(machine.x-truck.x)<5.7&&
-            machine.z>truck.z-1&&machine.z<truck.z+10.5);
-          if(roadBlock)status='ROAD BLOCKED';
-          else{
+          // Pick a safe side of parked machinery, including vehicles on the north bank.
+          // Keep the convoy inside the bridge deck while passing obstacles.
+          const obstacles=units.filter(machine=>machine!==escort&&Math.abs(machine.x)<8.5&&
+            machine.z>truck.z-5&&machine.z<truck.z+25);
+          const closest=obstacles.sort((a,b)=>a.z-b.z)[0];
+          const bypassX=closest?(closest.x>=0?-5.1:5.1):0;
+          truck.x=THREE.MathUtils.damp(truck.x,bypassX,closest?2.8:1.5,dt);
+          const blocked=obstacles.some(machine=>machine.z>truck.z-4.5&&machine.z<truck.z+8.5&&
+            Math.abs(machine.x-truck.x)<4.8);
+          if(blocked){
+            status='MANEUVERING PAST EQUIPMENT';
+          }else{
             truck.z=Math.min(progressLimit,truck.z+7.5*dt);
-            truck.x=THREE.MathUtils.damp(truck.x,clamp(escort.x*.2,-1.25,1.25),1.2,dt);
           }
         }
       }
@@ -851,8 +891,7 @@ function update(dt){
     });
     if(state.convoyStatus!==status){
       state.convoyStatus=status;ui.convoyLabel.textContent=status;
-      ui.missionTip.textContent=status==='ROAD BLOCKED'?'MOVE PARKED MACHINES OFF THE ROAD':status==='ESCORT OFF ROAD'?'BRING YOUR MACHINE ONTO THE ROAD':status==='WAITING FOR ESCORT'?'DRIVE THE LEAD MACHINE NORTH':'CONVOY FOLLOWING YOUR MACHINE';
-      if(status==='ROAD BLOCKED')toast('CONVOY STOPPED — PARKED EQUIPMENT BLOCKS THE ROAD');
+      ui.missionTip.textContent=status==='MANEUVERING PAST EQUIPMENT'?'CONVOY PASSING PARKED EQUIPMENT':status==='ESCORT OFF ROAD'?'BRING THE ESCORT TO THE ROAD':status==='WAITING FOR ESCORT'?'DRIVE YOUR ESCORT ACROSS THE BRIDGE':status==='CROSSING NORTH'?'CONVOY CROSSING TO NORTH STAGING':'CONVOY FOLLOWING THE LEAD VEHICLE';
     }
     if(allArrived&&!state.won){objectives[4].done=true;state.won=true;state.convoy=false;renderObjectives();ui.victoryTime.textContent=`OPERATION TIME // ${Math.floor(state.elapsed/60).toString().padStart(2,'0')}:${Math.floor(state.elapsed%60).toString().padStart(2,'0')}`;window.setTimeout(()=>ui.victoryOverlay.classList.remove('hidden'),700);toast('ALL CONVOY TRUCKS NORTH OF THE RIVER — MISSION SUCCESS');}
   }
