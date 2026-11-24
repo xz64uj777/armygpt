@@ -333,8 +333,14 @@ function makeRecovery(){
   cable.rotation.x=.43;
   const hook=mesh(boom,new THREE.TorusGeometry(.4,.1,6,10,PI*1.7),MAT.steel,0,-2.44,-7.35);
   hook.rotation.z=PI;
+  // A hydraulically articulated underlift below the rear bumper.
+  // The separate world-space towing bar and wheel cradle connect to its tip.
+  const wheelLift=createGroup(g,0,.82,-4.4);
+  wheelLift.rotation.x=-.12;
+  box(wheelLift,.72,.42,2.2,MAT.steelDark,0,0,-1.1);
+  box(wheelLift,.5,.29,1.05,MAT.steel,0,0,-2.05);
   for(const x of [-1.4,1.4])box(g,.65,.33,.15,MAT.white,x,3,4.55);
-  g.userData.boom=boom;
+  g.userData={boom,cable,hook,wheelLift};
   return g;
 }
 function makeExcavator(){
@@ -385,8 +391,17 @@ const stranded={x:-21,z:-17,heading:-.5,mesh:makeConvoyTruck(MAT.rockDark),attac
 const recoveryDropoff={x:15,z:71,radius:10}; // North-bank shoulder; clear of convoy route.
 const TOW_REAR_AXLE_OFFSET=2.75;
 const TOW_HITCH_TO_AXLE=10.2;
-const towBar=mesh(scene,new THREE.CylinderGeometry(.12,.12,1,8),MAT.steel,0,0,0,false);
+const towBar=mesh(scene,new THREE.CylinderGeometry(.18,.18,1,10),MAT.steel,0,0,0,false);
 towBar.visible=false;
+// The wheel cradle stays under the disabled truck's front axle and turns with it.
+const towCradle=createGroup(scene);
+box(towCradle,4.15,.2,.55,MAT.steelDark,0,-.08,0);
+for(const side of [-1,1]){
+  box(towCradle,.6,.16,1.3,MAT.steel,side*1.94,-.14,-.18);
+  box(towCradle,.6,.4,.14,MAT.steelDark,side*1.94,.05,-.78);
+}
+towCradle.visible=false;
+let recoveryLift=0;
 stranded.mesh.position.set(stranded.x,groundY(stranded.x,stranded.z)+.11,stranded.z);
 stranded.mesh.rotation.y=-.5;
 const recoveryGlow=mesh(scene,new THREE.CylinderGeometry(2.5,2.5,.04,24),new THREE.MeshBasicMaterial({color:0xffaa66,transparent:true,opacity:.42}),stranded.x,groundY(stranded.x,stranded.z)+.08,stranded.z,false);
@@ -440,16 +455,31 @@ function updateTowedVehicle(){
     stranded.x=hitchX-dirX*(TOW_HITCH_TO_AXLE-TOW_REAR_AXLE_OFFSET);
     stranded.z=hitchZ-dirZ*(TOW_HITCH_TO_AXLE-TOW_REAR_AXLE_OFFSET);
   }
-  stranded.mesh.position.set(stranded.x,driveY(stranded.x,stranded.z)+.12,stranded.z);
-  stranded.mesh.rotation.y=stranded.heading;
-  const a=V(hitchX,driveY(hitchX,hitchZ)+1.7,hitchZ);
-  const b=V(stranded.x+Math.sin(stranded.heading)*3.6,
-    driveY(stranded.x,stranded.z)+1.15,
-    stranded.z+Math.cos(stranded.heading)*3.6);
+  // Pitch the truck about its rear axle, keeping those tires on the road.
+  // Front wheels rise with the hydraulics instead of remaining on the ground.
+  const liftAngle=-.14*recoveryLift;
+  const rearX=stranded.x-Math.sin(stranded.heading)*TOW_REAR_AXLE_OFFSET;
+  const rearZ=stranded.z-Math.cos(stranded.heading)*TOW_REAR_AXLE_OFFSET;
+  stranded.mesh.position.set(stranded.x,
+    driveY(rearX,rearZ)+.12-Math.sin(liftAngle)*TOW_REAR_AXLE_OFFSET,
+    stranded.z);
+  stranded.mesh.rotation.order='YXZ';
+  stranded.mesh.rotation.set(liftAngle,stranded.heading,0);
+  const frontX=stranded.x+Math.sin(stranded.heading)*2.55*Math.cos(liftAngle);
+  const frontZ=stranded.z+Math.cos(stranded.heading)*2.55*Math.cos(liftAngle);
+  const frontY=stranded.mesh.position.y+.24-Math.sin(liftAngle)*2.55-.09;
+  const b=V(frontX,frontY,frontZ);
+  // The connecting underreach follows the articulated truck through turns.
+  const barX=rig.x-fx*6.45,barZ=rig.z-fz*6.45;
+  const a=V(barX,driveY(rig.x,rig.z)+.94+Math.sin(units[2].mesh.userData.wheelLift.rotation.x)*2.05,barZ);
   const link=b.clone().sub(a);
   towBar.position.copy(a).add(b).multiplyScalar(.5);
   towBar.quaternion.setFromUnitVectors(V(0,1,0),link.clone().normalize());
-  towBar.scale.set(1,link.length(),1);towBar.visible=true;
+  towBar.scale.set(1,link.length(),1);
+  towBar.visible=true;
+  towCradle.position.copy(b);
+  towCradle.rotation.y=stranded.heading;
+  towCradle.visible=true;
 }
 // Vehicle positions must be synchronized after objectives have been initialized.
 
@@ -617,7 +647,10 @@ function finishAction(obj){
     toast('MODULAR BRIDGE DEPLOYING — CROSSING SECURED');
   }
   if(obj.id==='recover'){
-    stranded.attached=false;towBar.visible=false;
+    stranded.attached=false;towBar.visible=false;towCradle.visible=false;
+    recoveryLift=0;
+    stranded.mesh.rotation.x=0;
+    stranded.mesh.position.y=driveY(stranded.x,stranded.z)+.12;
     toast('DISABLED TRUCK RECOVERED ACROSS BRIDGE — NORTH STAGING SECURED');
   }
   if(obj.id==='earthwork'){
@@ -861,10 +894,18 @@ function update(dt){
   }
   syncUnit(u);
   pushDebrisWithBlade(u,dt);
-  const recoveryBoom=units[2].mesh.userData.boom;
-  // Raise for transport, lower while connecting/towing, raise after release.
-  const boomLowered=stranded.attached||state.working?.id==='recover';
-  recoveryBoom.rotation.x=THREE.MathUtils.damp(recoveryBoom.rotation.x,boomLowered?-.43:.3,3.8,dt);
+  const recoveryGear=units[2].mesh.userData;
+  // Boom lowers for connection/disconnection but returns up while towing.
+  const recovering=state.working?.id==='recover';
+  recoveryGear.boom.rotation.x=THREE.MathUtils.damp(recoveryGear.boom.rotation.x,recovering?-.43:.3,3.8,dt);
+  // A real-looking wheel-lift cycle: lower to engage, rise with the truck's front axle.
+  const targetLift=stranded.attached&&!recovering?1:0;
+  recoveryLift=THREE.MathUtils.damp(recoveryLift,targetLift,2.3,dt);
+  recoveryGear.wheelLift.rotation.x=THREE.MathUtils.damp(recoveryGear.wheelLift.rotation.x,
+    -.12+recoveryLift*.22,3.4,dt);
+  // Hide the loose hanging cable once the solid wheel-lift takes the load.
+  recoveryGear.cable.visible=!stranded.attached;
+  recoveryGear.hook.visible=!stranded.attached;
   const arm=units[3].mesh.userData;
   const motion=['excavate','earthwork'].includes(state.working?.id)?Math.sin(state.workTime/state.workDuration*PI):0;
   arm.boom.rotation.x=-.36+.26*motion;
