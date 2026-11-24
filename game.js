@@ -380,13 +380,29 @@ const units=[
   {id:'recovery',name:'HEMTT RECOVERY',short:'HEMTT RECOVERY',role:'CRANE / FIELD RECOVERY',icon:'⚒',x:-14,z:-77,heading:0,speed:0,maxSpeed:19,turn:1.13,mesh:makeRecovery()},
   {id:'excavator',name:'E390 TACTICAL EXCAVATOR',short:'E390 EXCAVATOR',role:'DIG / TRENCH / SPOIL',icon:'⛏',x:24,z:-61,heading:0,speed:0,maxSpeed:10.5,turn:1,mesh:makeExcavator()},
 ];
-const stranded={x:-21,z:-17,mesh:makeConvoyTruck(MAT.rockDark)};
+const stranded={x:-21,z:-17,mesh:makeConvoyTruck(MAT.rockDark),attached:false};
+const recoveryDropoff={x:-20,z:-58,radius:11};
+const towBar=mesh(scene,new THREE.CylinderGeometry(.12,.12,1,8),MAT.steel,0,0,0,false);
+towBar.visible=false;
 stranded.mesh.position.set(stranded.x,groundY(stranded.x,stranded.z)+.11,stranded.z);
 stranded.mesh.rotation.y=-.5;
 const recoveryGlow=mesh(scene,new THREE.CylinderGeometry(2.5,2.5,.04,24),new THREE.MeshBasicMaterial({color:0xffaa66,transparent:true,opacity:.42}),stranded.x,groundY(stranded.x,stranded.z)+.08,stranded.z,false);
-const convoy=Array.from({length:4},(_,i)=>({mesh:makeConvoyTruck(i===0?MAT.oliveLight:MAT.olive),z:-94-i*11,x:0}));
+const convoy=Array.from({length:4},(_,i)=>({mesh:makeConvoyTruck(i===0?MAT.oliveLight:MAT.olive),z:-87-i*9,x:0}));
 for(const truck of convoy){truck.mesh.position.set(truck.x,groundY(truck.x,truck.z)+.11,truck.z);truck.mesh.visible=true;}
 function syncUnit(u){u.mesh.position.set(u.x,driveY(u.x,u.z)+.1,u.z);u.mesh.rotation.y=u.heading;}
+function updateTowedVehicle(){
+  if(!stranded.attached)return;
+  const rig=units[2],forwardX=Math.sin(rig.heading),forwardZ=Math.cos(rig.heading);
+  stranded.x=rig.x-forwardX*12.5;stranded.z=rig.z-forwardZ*12.5;
+  stranded.mesh.position.set(stranded.x,driveY(stranded.x,stranded.z)+.12,stranded.z);
+  stranded.mesh.rotation.y=rig.heading;
+  const a=V(rig.x-forwardX*5.1,driveY(rig.x,rig.z)+1.7,rig.z-forwardZ*5.1);
+  const b=V(stranded.x+forwardX*3.6,driveY(stranded.x,stranded.z)+1.15,stranded.z+forwardZ*3.6);
+  const link=b.clone().sub(a);
+  towBar.position.copy(a).add(b).multiplyScalar(.5);
+  towBar.quaternion.setFromUnitVectors(V(0,1,0),link.clone().normalize());
+  towBar.scale.set(1,link.length(),1);towBar.visible=true;
+}
 // Vehicle positions must be synchronized after objectives have been initialized.
 
 const rings=[];
@@ -405,6 +421,7 @@ const markers={
   clear:makeRing(1,-35,0xffb45f,9),
   bridge:makeRing(1,7,0x8bd9e1,9),
   recover:makeRing(-21,-17,0xffbc82,8),
+  earthwork:makeRing(28,-42,0xd2b87a,8),
   dispatch:makeRing(0,-78,0x85d79f,8)
 };
 markers.dispatch.visible=false;
@@ -412,11 +429,12 @@ markers.dispatch.visible=false;
 const objectives=[
   {id:'clear',title:'CLEAR THE LANDSLIDE',detail:'D7 DOZER / SOUTH APPROACH',unit:'dozer',x:1,z:-35,radius:14,done:false},
   {id:'bridge',title:'BRIDGE THE RIVER',detail:'M60 / SOUTH BANK',unit:'bridge',x:1,z:7,radius:16,done:false},
-  {id:'recover',title:'RECOVER THE VEHICLE',detail:'HEMTT / STRANDED ASSET',unit:'recovery',x:-21,z:-17,radius:16,done:false},
-  {id:'dispatch',title:'ESCORT THE CONVOY',detail:'DISPATCH / SECURE NORTH ROAD',unit:null,x:0,z:-78,radius:9999,done:false}
+  {id:'recover',title:'TOW THE DISABLED VEHICLE',detail:'HEMTT / HOOK UP, THEN DELIVER',unit:'recovery',x:-21,z:-17,radius:11,done:false},
+  {id:'earthwork',title:'DIG THE DRAINAGE TRENCH',detail:'E390 / EAST ROAD SHOULDER',unit:'excavator',x:28,z:-42,radius:13,done:false},
+  {id:'dispatch',title:'ESCORT THE CONVOY',detail:'FOLLOW YOUR LEAD VEHICLE / CLEAR ROAD',unit:null,x:0,z:-78,radius:9999,done:false}
 ];
 units.forEach(syncUnit);
-const state={started:false,won:false,selected:0,working:null,workTime:0,workDuration:2.65,earthMoved:0,bridgeBuild:-1,convoy:false,storm:false,sound:false,cameraMode:0,orbit:PI,pitch:.58,distance:36,elapsed:0,noticeUntil:0,lastWarning:0};
+const state={started:false,won:false,selected:0,working:null,workTime:0,workDuration:2.65,earthMoved:0,bridgeBuild:-1,convoy:false,convoyStatus:'HOLDING',storm:false,sound:false,cameraMode:0,orbit:PI,pitch:.58,distance:36,elapsed:0,noticeUntil:0,lastWarning:0};
 const input={keys:new Set(),forward:0,steer:0,pedalForward:0,pedalReverse:0};
 let audioContext=null;
 function beep(freq=220,duration=.12){
@@ -440,18 +458,18 @@ function active(){return units[state.selected];}
 function pending(){return objectives.find(o=>!o.done&&o.id!=='dispatch') || objectives.find(o=>!o.done);}
 function near(u,obj){return Math.hypot(u.x-obj.x,u.z-obj.z)<obj.radius;}
 function renderObjectives(){
-  const available=objectives.slice(0,3).every(o=>o.done);
-  markers.dispatch.visible=available&&!objectives[3].done;
+  const available=objectives.slice(0,4).every(o=>o.done);
+  markers.dispatch.visible=available&&!state.convoy&&!objectives[4].done;
   ui.objectives.innerHTML=objectives.map((o,i)=>{
     const locked=o.id==='dispatch'&&!available;
     const activeObjective=!o.done&&!locked&&o.unit===active().id || (o.id==='dispatch'&&available&&!o.done);
-    return `<div class="objective ${o.done?'complete':''} ${activeObjective?'active':''}"><div class="objective-number">${o.done?'✓':String(i+1).padStart(2,'0')}</div><div><div class="objective-title">${o.title}</div><div class="objective-detail">${o.done?'COMPLETED':locked?'AWAITING ENGINEER TASKS':o.detail}</div></div></div>`;
+    return `<div class="objective ${o.done?'complete':''} ${activeObjective?'active':''}"><div class="objective-number">${o.done?'✓':String(i+1).padStart(2,'0')}</div><div><div class="objective-title">${o.title}</div><div class="objective-detail">${o.done?'COMPLETED':locked?'AWAITING ENGINEER TASKS':o.id==='dispatch'&&state.convoy?'FOLLOW THE LEAD VEHICLE':o.detail}</div></div></div>`;
   }).join('');
   let completed=objectives.filter(o=>o.done).length;
-  ui.missionCount.textContent=`${completed} / 4`;
-  ui.progressFill.style.width=`${completed*25}%`;
-  ui.convoyLabel.textContent=state.convoy?'ON THE MOVE':available?'READY FOR DISPATCH':'HOLDING';
-  ui.missionTip.textContent=state.working?'FIELD OPERATIONS IN PROGRESS':completed===4?'OPERATION COMPLETE — FREEPLAY AVAILABLE':available?'ROUTE CLEAR — DISPATCH THE CONVOY':'ENGINEERS MAKE THE WAY';
+  ui.missionCount.textContent=`${completed} / ${objectives.length}`;
+  ui.progressFill.style.width=`${completed/objectives.length*100}%`;
+  ui.convoyLabel.textContent=state.won?'DELIVERED':state.convoy?state.convoyStatus:available?'READY FOR DISPATCH':'HOLDING';
+  ui.missionTip.textContent=state.working?'FIELD OPERATIONS IN PROGRESS':state.won?'OPERATION COMPLETE — FREEPLAY AVAILABLE':state.convoy?'DRIVE NORTH — CONVOY FOLLOWS YOUR VEHICLE':available?'ROUTE CLEAR — DISPATCH THE CONVOY':'ENGINEERS MAKE THE WAY';
 }
 function renderFleet(){
   ui.fleet.innerHTML=units.map((u,i)=>`<button class="fleet-item ${i===state.selected?'selected':''}" data-index="${i}" aria-label="Select ${u.name}"><span class="fleet-index">0${i+1}</span><span class="fleet-icon">${u.icon}</span><span class="fleet-name">${u.short}</span><span class="fleet-role">${u.role}</span></button>`).join('');
@@ -468,16 +486,26 @@ function selectVehicle(index){
 }
 function actionFor(){
   if(state.working)return {label:`WORKING ${Math.round(state.workTime/state.workDuration*100)}%`,hint:'FIELD CREW ENGAGED',disabled:true};
-  if(active().id==='excavator')return {label:'EXCAVATE SOIL',hint:canExcavate(active())?'FREE DIG / '+state.earthMoved+' m³ MOVED':'MOVE OFF ROAD TO EXCAVATE',disabled:!canExcavate(active()),objective:{id:'excavate'}};
+  if(active().id==='excavator'){
+    const task=objectives.find(o=>o.id==='earthwork');
+    if(!task.done){
+      const spot=excavationSpot(active());
+      const distance=Math.hypot(spot.x-task.x,spot.z-task.z);
+      const inPosition=canExcavate(active())&&distance<task.radius;
+      return {label:'DIG DRAINAGE TRENCH',hint:inPosition?'IN RANGE — PRESS DIG':`MOVE TO EAST SHOULDER / ${Math.ceil(distance)} M`,disabled:!inPosition,objective:task};
+    }
+    if(!state.convoy&&!state.won&&objectives.slice(0,4).every(o=>o.done))return {label:'DISPATCH CONVOY',hint:'ESCORT FROM THE ROAD — CLEAR PARKED MACHINES',disabled:false,objective:objectives[4]};
+    return {label:'EXCAVATE SOIL',hint:canExcavate(active())?'FREE DIG / '+state.earthMoved+' m³ MOVED':'MOVE OFF ROAD TO EXCAVATE',disabled:!canExcavate(active()),objective:{id:'excavate'}};
+  }
   if(state.won)return {label:'FREE ROAM',hint:'SELECT EXCAVATOR FOR EARTHWORKS',disabled:true};
-  if(state.convoy)return {label:'CONVOY MOVING',hint:'WAIT FOR ARRIVAL AT FORWARD BASE',disabled:true};
+  if(state.convoy)return {label:'CONVOY FOLLOWING',hint:state.convoyStatus+' — DRIVE NORTH / CLEAR ROAD',disabled:true};
   const unit=active();
-  const specific=objectives.slice(0,3).find(o=>o.unit===unit.id);
+  const specific=objectives.slice(0,4).find(o=>o.unit===unit.id);
   if(specific&&!specific.done){
     const d=Math.hypot(unit.x-specific.x,unit.z-specific.z);
-    return {label:unit.id==='dozer'?'CLEAR DEBRIS':unit.id==='bridge'?'DEPLOY BRIDGE':'RECOVER ASSET',hint:d<specific.radius?'IN RANGE — PRESS WORK':`TARGET ${Math.ceil(d)} M AWAY`,disabled:d>=specific.radius,objective:specific};
+    return {label:unit.id==='dozer'?'CLEAR DEBRIS':unit.id==='bridge'?'DEPLOY BRIDGE':stranded.attached?'DROP OFF RECOVERED TRUCK':'HOOK UP DISABLED TRUCK',hint:d<specific.radius?'IN RANGE — PRESS WORK':`TARGET ${Math.ceil(d)} M AWAY`,disabled:d>=specific.radius,objective:specific};
   }
-  if(objectives.slice(0,3).every(o=>o.done))return {label:'DISPATCH CONVOY',hint:'ROUTE OPEN — AUTHORIZE MOVEMENT',disabled:false,objective:objectives[3]};
+  if(objectives.slice(0,4).every(o=>o.done))return {label:'DISPATCH CONVOY',hint:'ROUTE OPEN — AUTHORIZE MOVEMENT',disabled:false,objective:objectives[4]};
   return {label:'UNIT TASK COMPLETE',hint:'SELECT ANOTHER ENGINEER ASSET',disabled:true};
 }
 function updateAction(){
@@ -486,7 +514,7 @@ function updateAction(){
   ui.actionHint.textContent=a.hint;
   ui.actionButton.disabled=a.disabled;
   ui.mobileActionButton.disabled=a.disabled;
-  ui.mobileActionLabel.textContent=state.working?'BUSY':a.objective?.id==='excavate'?'DIG':a.objective?.id==='dispatch'?'CONVOY':a.label==='DEPLOY BRIDGE'?'BRIDGE':a.label==='RECOVER ASSET'?'RECOVER':a.label==='CLEAR DEBRIS'?'CLEAR':'WORK';
+  ui.mobileActionLabel.textContent=state.working?'BUSY':['excavate','earthwork'].includes(a.objective?.id)?'DIG':a.objective?.id==='dispatch'?'CONVOY':a.label==='DEPLOY BRIDGE'?'BRIDGE':a.objective?.id==='recover'?'TOW':a.label==='CLEAR DEBRIS'?'CLEAR':'WORK';
   ui.mobileActionButton.setAttribute('aria-label',a.label);
 }
 function startAction(){
@@ -495,13 +523,13 @@ function startAction(){
   if(action.disabled)return;
   if(action.objective?.id==='dispatch'){
     if(state.convoy)return;
-    state.convoy=true;
-    toast('CONVOY DISPATCHED — MAINTAIN THE CORRIDOR');
+    state.convoy=true;state.convoyStatus='WAITING FOR ESCORT';
+    toast('CONVOY READY — DRIVE NORTH ON THE ROAD; MOVE PARKED EQUIPMENT');
     renderObjectives();updateAction();beep(550,.35);
     return;
   }
   state.working=action.objective;
-  state.workDuration=state.working.id==='excavate'?2.35:2.65;
+  state.workDuration=['excavate','earthwork'].includes(state.working.id)?2.35:2.65;
   state.workTime=0;
   active().speed=0;
   toast(`${active().short} — ENGINEERING OPERATION INITIATED`);
@@ -512,6 +540,16 @@ function finishAction(obj){
     digSoil(active());
     state.working=null;state.workDuration=2.65;
     updateAction();beep(380,.2);
+    return;
+  }
+  if(obj.id==='recover'&&!stranded.attached){
+    stranded.attached=true;recoveryGlow.visible=false;
+    obj.x=recoveryDropoff.x;obj.z=recoveryDropoff.z;obj.radius=recoveryDropoff.radius;
+    obj.detail='HEMTT / TOW TO SOUTH STAGING';
+    markers.recover.position.set(obj.x,groundY(obj.x,obj.z)+.35,obj.z);
+    updateTowedVehicle();
+    state.working=null;renderObjectives();updateAction();
+    toast('TOW HOOKED UP — DRIVE THE HEMTT TO SOUTH STAGING');
     return;
   }
   obj.done=true;
@@ -525,12 +563,16 @@ function finishAction(obj){
     toast('MODULAR BRIDGE DEPLOYING — CROSSING SECURED');
   }
   if(obj.id==='recover'){
-    stranded.mesh.visible=false;recoveryGlow.visible=false;
-    toast('DISABLED VEHICLE RECOVERED — ASSET SAFE');
+    stranded.attached=false;towBar.visible=false;
+    toast('DISABLED TRUCK DELIVERED TO STAGING — RECOVERY COMPLETE');
+  }
+  if(obj.id==='earthwork'){
+    digSoil(active());
+    toast('DRAINAGE TRENCH CUT — ROAD SHOULDER STABILIZED');
   }
   state.working=null;
   renderObjectives();updateAction();beep(650,.35);
-  if(objectives.slice(0,3).every(o=>o.done))toast('ALL FIELD OBJECTIVES COMPLETE — DISPATCH AVAILABLE');
+  if(objectives.slice(0,4).every(o=>o.done))toast('ALL FIELD OBJECTIVES COMPLETE — DISPATCH AVAILABLE');
 }
 // The follow camera stays relative to the active machine's heading.
 // A double-tap/double-click on the 3D view restores the rear chase camera.
@@ -703,7 +745,7 @@ function drawMap(){
     map.fillStyle='#44634f';map.beginPath();map.arc(mx(x),mz(z),2.5,0,PI*2);map.fill();
   }
   for(const o of objectives){
-    if(o.done||o.id==='dispatch'&&!objectives.slice(0,3).every(v=>v.done))continue;
+    if(o.done||o.id==='dispatch'&&!objectives.slice(0,4).every(v=>v.done))continue;
     const x=mx(o.x),y=mz(o.z);
     map.strokeStyle=o.unit===active().id||o.id==='dispatch'?'#ffbf73':'#b9c9c2';map.lineWidth=1.2;
     map.beginPath();map.arc(x,y,5+Math.sin(state.elapsed*2)*1.5,0,PI*2);map.stroke();
@@ -711,6 +753,7 @@ function drawMap(){
   }
   for(const e of earthworks){map.fillStyle=e.depth<0?'#bd8b52':'#c5ab74';map.beginPath();map.arc(mx(e.x),mz(e.z),2.4,0,PI*2);map.fill();}
   for(const truck of convoy){map.fillStyle=state.convoy?'#8bdfa6':'#5e8a77';map.fillRect(mx(truck.x)-2,mz(truck.z)-3,4,6);}
+  if(stranded.attached){map.fillStyle='#e8b67d';map.fillRect(mx(stranded.x)-2,mz(stranded.z)-3,4,6);}
   units.forEach((u,i)=>{
     const x=mx(u.x),y=mz(u.z);
     map.save();map.translate(x,y);map.rotate(u.heading);
@@ -722,7 +765,7 @@ function drawMap(){
 }
 const projector=new THREE.Vector3();
 function updateMarker(){
-  const objective=objectives.find(o=>o.unit===active().id&&!o.done) || (objectives.slice(0,3).every(o=>o.done)&&!state.convoy?objectives[3]:null);
+  const objective=objectives.find(o=>o.unit===active().id&&!o.done) || (objectives.slice(0,4).every(o=>o.done)&&!state.convoy?objectives[4]:null);
   if(!objective){ui.targetMarker.style.display='none';return;}
   projector.set(objective.x,groundY(objective.x,objective.z)+7,objective.z).project(camera);
   if(projector.z<-1||projector.z>1||Math.abs(projector.x)>1||Math.abs(projector.y)>1){ui.targetMarker.style.display='none';return;}
@@ -772,22 +815,46 @@ function update(dt){
   arm.boom.rotation.x=-.36+.26*motion;
   arm.stick.rotation.x=.67-.6*motion;
   arm.bucket.rotation.x=-.44+.45*motion;
+  updateTowedVehicle();
   if(state.bridgeBuild>=0){
     state.bridgeBuild+=dt;
     bridgeSegments.forEach((g,i)=>{g.visible=state.bridgeBuild>=i*.27;});
     if(state.bridgeBuild>=8*.27){state.bridgeBuild=-1;bridgeSegments.forEach(g=>g.visible=true);}
   }
   if(state.convoy){
+    // Advance on the cleared corridor only when the player's current machine leads.
+    // Obstructing parked heavy equipment stops the convoy instead of being ghosted.
+    const escort=active(),onRoad=Math.abs(escort.x)<=6.5,spacing=12,escortGap=16;
+    let status=onRoad?'FOLLOWING ESCORT':'ESCORT OFF ROAD';
     let allArrived=true;
     convoy.forEach((truck,i)=>{
-      truck.z=Math.min(96-i*4,truck.z+7.8*dt);
-      const turn=(i===0?0:Math.sin(state.elapsed*.28+i)*.05);
-      truck.x=turn;
+      const destination=98-i*spacing;
+      const leaderLimit=i===0?escort.z-escortGap:convoy[i-1].z-spacing;
+      const progressLimit=Math.min(destination,leaderLimit);
+      if(truck.z<destination-.1){
+        allArrived=false;
+        if(!onRoad||progressLimit<=truck.z+.02){
+          if(onRoad&&status!=='ROAD BLOCKED')status='WAITING FOR ESCORT';
+        }else{
+          const roadBlock=units.find(machine=>
+            machine!==escort&&Math.abs(machine.x-truck.x)<5.7&&
+            machine.z>truck.z-1&&machine.z<truck.z+10.5);
+          if(roadBlock)status='ROAD BLOCKED';
+          else{
+            truck.z=Math.min(progressLimit,truck.z+7.5*dt);
+            truck.x=THREE.MathUtils.damp(truck.x,clamp(escort.x*.2,-1.25,1.25),1.2,dt);
+          }
+        }
+      }
       truck.mesh.position.set(truck.x,driveY(truck.x,truck.z)+.12,truck.z);
       truck.mesh.rotation.y=0;
-      if(truck.z<96-i*4)allArrived=false;
     });
-    if(allArrived&&!state.won){objectives[3].done=true;state.won=true;state.convoy=false;renderObjectives();ui.victoryTime.textContent=`OPERATION TIME // ${Math.floor(state.elapsed/60).toString().padStart(2,'0')}:${Math.floor(state.elapsed%60).toString().padStart(2,'0')}`;window.setTimeout(()=>ui.victoryOverlay.classList.remove('hidden'),700);toast('ALL CONVOY VEHICLES ARRIVED — MISSION SUCCESS');}
+    if(state.convoyStatus!==status){
+      state.convoyStatus=status;ui.convoyLabel.textContent=status;
+      ui.missionTip.textContent=status==='ROAD BLOCKED'?'MOVE PARKED MACHINES OFF THE ROAD':status==='ESCORT OFF ROAD'?'BRING YOUR MACHINE ONTO THE ROAD':status==='WAITING FOR ESCORT'?'DRIVE THE LEAD MACHINE NORTH':'CONVOY FOLLOWING YOUR MACHINE';
+      if(status==='ROAD BLOCKED')toast('CONVOY STOPPED — PARKED EQUIPMENT BLOCKS THE ROAD');
+    }
+    if(allArrived&&!state.won){objectives[4].done=true;state.won=true;state.convoy=false;renderObjectives();ui.victoryTime.textContent=`OPERATION TIME // ${Math.floor(state.elapsed/60).toString().padStart(2,'0')}:${Math.floor(state.elapsed%60).toString().padStart(2,'0')}`;window.setTimeout(()=>ui.victoryOverlay.classList.remove('hidden'),700);toast('ALL CONVOY TRUCKS NORTH OF THE RIVER — MISSION SUCCESS');}
   }
   rings.forEach((r,i)=>{r.diamond.rotation.y+=dt*.9;r.diamond.position.y=5.1+Math.sin(state.elapsed*2.1+i)*.3;r.outline.material.opacity=.54+.17*Math.sin(state.elapsed*1.6+i);});
   riverRipples.forEach((m,i)=>{m.position.x+=dt*(i%2?-.3:.35);if(m.position.x>112)m.position.x=-112;if(m.position.x< -112)m.position.x=112;});
