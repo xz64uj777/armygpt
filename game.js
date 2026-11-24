@@ -305,6 +305,12 @@ function makeBridgeLayer(){
     for(let z=-2;z<4.5;z+=1.5)box(g,5.2,.18,.18,MAT.steelDark,0,y+.14,z);
   }
   for(const x of [-1.85,1.85])box(g,.68,.32,.12,MAT.white,x,2.14,-4.26);
+  // Travel heading zero points +Z, but this M60 was originally drawn facing -Z.
+  // Turn only its visual geometry: keep the vehicle's world heading, drive and camera unchanged.
+  const body=new THREE.Group();
+  while(g.children.length)body.add(g.children[0]);
+  g.add(body);
+  body.rotation.y=PI;
   return g;
 }
 function makeRecovery(){
