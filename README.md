@@ -71,3 +71,10 @@ The game offers onscreen analog steering, **hold DRIVE** and **hold REVERSE** pe
 - Each mission starts in a rear follow-camera relative to the currently selected machine. Switching machines automatically recovers the behind-the-machine view.
 - Drag/swipe on the 3D scene to orbit and pinch/scroll to zoom.
 - Double tap on the 3D scene (double click on desktop), or press **R**, to restore the default behind-vehicle chase view. Camera mode button cycles rear-follow zoom/elevation presets.
+
+## Phase III — Recovery, convoy escort, and required excavator work
+
+1. Drive the HEMTT to the disabled truck and tap **TOW** to hook it up. The truck and towing linkage remain visible and follow the HEMTT as you drive to the **south staging marker**. Tap **TOW** there to drop it off and complete recovery.
+2. Drive the E390 excavator to the east shoulder marker at approximately x=28, z=-42, and tap **DIG** to cut a required drainage trench. Free digging remains available afterward.
+3. Complete the four engineering objectives, then tap **CONVOY**. The lead engineer machine at dispatch becomes the convoy escort; drive it north over the bridge. The four supply trucks keep their spacing, wait for their escort, and halt when a parked engineering vehicle occupies the road. Switch vehicles to move the obstruction, then return to the escort vehicle.
+4. The post-mission **CONTINUE IN FREEPLAY** option still supports mobile drive pedals and excavator work.

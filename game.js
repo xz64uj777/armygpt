@@ -430,11 +430,11 @@ const objectives=[
   {id:'clear',title:'CLEAR THE LANDSLIDE',detail:'D7 DOZER / SOUTH APPROACH',unit:'dozer',x:1,z:-35,radius:14,done:false},
   {id:'bridge',title:'BRIDGE THE RIVER',detail:'M60 / SOUTH BANK',unit:'bridge',x:1,z:7,radius:16,done:false},
   {id:'recover',title:'TOW THE DISABLED VEHICLE',detail:'HEMTT / HOOK UP, THEN DELIVER',unit:'recovery',x:-21,z:-17,radius:11,done:false},
-  {id:'earthwork',title:'DIG THE DRAINAGE TRENCH',detail:'E390 / EAST ROAD SHOULDER',unit:'excavator',x:28,z:-42,radius:13,done:false},
+  {id:'earthwork',title:'DIG THE DRAINAGE TRENCH',detail:'E390 / EAST ROAD SHOULDER',unit:'excavator',x:28,z:-42,radius:8,done:false},
   {id:'dispatch',title:'ESCORT THE CONVOY',detail:'FOLLOW YOUR LEAD VEHICLE / CLEAR ROAD',unit:null,x:0,z:-78,radius:9999,done:false}
 ];
 units.forEach(syncUnit);
-const state={started:false,won:false,selected:0,working:null,workTime:0,workDuration:2.65,earthMoved:0,bridgeBuild:-1,convoy:false,convoyStatus:'HOLDING',storm:false,sound:false,cameraMode:0,orbit:PI,pitch:.58,distance:36,elapsed:0,noticeUntil:0,lastWarning:0};
+const state={started:false,won:false,selected:0,working:null,workTime:0,workDuration:2.65,earthMoved:0,bridgeBuild:-1,convoy:false,escortIndex:0,convoyStatus:'HOLDING',storm:false,sound:false,cameraMode:0,orbit:PI,pitch:.58,distance:36,elapsed:0,noticeUntil:0,lastWarning:0};
 const input={keys:new Set(),forward:0,steer:0,pedalForward:0,pedalReverse:0};
 let audioContext=null;
 function beep(freq=220,duration=.12){
@@ -523,7 +523,7 @@ function startAction(){
   if(action.disabled)return;
   if(action.objective?.id==='dispatch'){
     if(state.convoy)return;
-    state.convoy=true;state.convoyStatus='WAITING FOR ESCORT';
+    state.convoy=true;state.escortIndex=state.selected;state.convoyStatus='WAITING FOR ESCORT';
     toast('CONVOY READY — DRIVE NORTH ON THE ROAD; MOVE PARKED EQUIPMENT');
     renderObjectives();updateAction();beep(550,.35);
     return;
@@ -709,7 +709,7 @@ for(const event of ['pointerup','pointercancel','lostpointercapture'])ui.joystic
 function bindPedal(el,key){
   let pointer=null;
   el.addEventListener('pointerdown',e=>{
-    if(!state.started||state.won||pointer!==null)return;
+    if(!state.started||pointer!==null)return;
     e.preventDefault();pointer=e.pointerId;el.setPointerCapture(pointer);
     input[key]=1;el.classList.add('pressed');
   });
@@ -811,7 +811,7 @@ function update(dt){
   }
   syncUnit(u);
   const arm=units[3].mesh.userData;
-  const motion=state.working?.id==='excavate'?Math.sin(state.workTime/state.workDuration*PI):0;
+  const motion=['excavate','earthwork'].includes(state.working?.id)?Math.sin(state.workTime/state.workDuration*PI):0;
   arm.boom.rotation.x=-.36+.26*motion;
   arm.stick.rotation.x=.67-.6*motion;
   arm.bucket.rotation.x=-.44+.45*motion;
@@ -824,7 +824,7 @@ function update(dt){
   if(state.convoy){
     // Advance on the cleared corridor only when the player's current machine leads.
     // Obstructing parked heavy equipment stops the convoy instead of being ghosted.
-    const escort=active(),onRoad=Math.abs(escort.x)<=6.5,spacing=12,escortGap=16;
+    const escort=units[state.escortIndex],onRoad=Math.abs(escort.x)<=6.5,spacing=12,escortGap=16;
     let status=onRoad?'FOLLOWING ESCORT':'ESCORT OFF ROAD';
     let allArrived=true;
     convoy.forEach((truck,i)=>{
