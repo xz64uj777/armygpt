@@ -381,8 +381,10 @@ const units=[
   {id:'recovery',name:'HEMTT RECOVERY',short:'HEMTT RECOVERY',role:'CRANE / FIELD RECOVERY',icon:'⚒',x:-14,z:-77,heading:0,speed:0,maxSpeed:19,turn:1.13,mesh:makeRecovery()},
   {id:'excavator',name:'E390 TACTICAL EXCAVATOR',short:'E390 EXCAVATOR',role:'DIG / TRENCH / SPOIL',icon:'⛏',x:24,z:-61,heading:0,speed:0,maxSpeed:10.5,turn:1,mesh:makeExcavator()},
 ];
-const stranded={x:-21,z:-17,mesh:makeConvoyTruck(MAT.rockDark),attached:false};
-const recoveryDropoff={x:-20,z:-58,radius:11};
+const stranded={x:-21,z:-17,heading:-.5,mesh:makeConvoyTruck(MAT.rockDark),attached:false};
+const recoveryDropoff={x:15,z:71,radius:10}; // North-bank shoulder; clear of convoy route.
+const TOW_REAR_AXLE_OFFSET=2.75;
+const TOW_HITCH_TO_AXLE=10.2;
 const towBar=mesh(scene,new THREE.CylinderGeometry(.12,.12,1,8),MAT.steel,0,0,0,false);
 towBar.visible=false;
 stranded.mesh.position.set(stranded.x,groundY(stranded.x,stranded.z)+.11,stranded.z);
@@ -421,14 +423,29 @@ function pushDebrisWithBlade(u,dt){
     renderObjectives();updateAction();
   }
 }
+// A real tow joint: the disabled vehicle's rear axle traces the hitch path.
+// Its heading comes from its own trailing axle, not the HEMTT's heading.
+// This permits visible articulation on corners rather than rotating as one rig.
 function updateTowedVehicle(){
   if(!stranded.attached)return;
-  const rig=units[2],forwardX=Math.sin(rig.heading),forwardZ=Math.cos(rig.heading);
-  stranded.x=rig.x-forwardX*12.5;stranded.z=rig.z-forwardZ*12.5;
+  const rig=units[2],fx=Math.sin(rig.heading),fz=Math.cos(rig.heading);
+  const hitchX=rig.x-fx*5.1,hitchZ=rig.z-fz*5.1;
+  const oldAxleX=stranded.x-Math.sin(stranded.heading)*TOW_REAR_AXLE_OFFSET;
+  const oldAxleZ=stranded.z-Math.cos(stranded.heading)*TOW_REAR_AXLE_OFFSET;
+  const dx=hitchX-oldAxleX,dz=hitchZ-oldAxleZ;
+  const dist=Math.hypot(dx,dz);
+  if(dist>.001){
+    const dirX=dx/dist,dirZ=dz/dist;
+    stranded.heading=Math.atan2(dirX,dirZ);
+    stranded.x=hitchX-dirX*(TOW_HITCH_TO_AXLE-TOW_REAR_AXLE_OFFSET);
+    stranded.z=hitchZ-dirZ*(TOW_HITCH_TO_AXLE-TOW_REAR_AXLE_OFFSET);
+  }
   stranded.mesh.position.set(stranded.x,driveY(stranded.x,stranded.z)+.12,stranded.z);
-  stranded.mesh.rotation.y=rig.heading;
-  const a=V(rig.x-forwardX*5.1,driveY(rig.x,rig.z)+1.7,rig.z-forwardZ*5.1);
-  const b=V(stranded.x+forwardX*3.6,driveY(stranded.x,stranded.z)+1.15,stranded.z+forwardZ*3.6);
+  stranded.mesh.rotation.y=stranded.heading;
+  const a=V(hitchX,driveY(hitchX,hitchZ)+1.7,hitchZ);
+  const b=V(stranded.x+Math.sin(stranded.heading)*3.6,
+    driveY(stranded.x,stranded.z)+1.15,
+    stranded.z+Math.cos(stranded.heading)*3.6);
   const link=b.clone().sub(a);
   towBar.position.copy(a).add(b).multiplyScalar(.5);
   towBar.quaternion.setFromUnitVectors(V(0,1,0),link.clone().normalize());
@@ -460,12 +477,12 @@ markers.dispatch.visible=false;
 const objectives=[
   {id:'clear',title:'PUSH LANDSLIDE OFF ROAD',detail:'D7 / DRIVE BLADE INTO ROCKS, PUSH TO SHOULDER',unit:'dozer',x:1,z:-35,radius:14,done:false},
   {id:'bridge',title:'BRIDGE THE RIVER',detail:'M60 / SOUTH BANK',unit:'bridge',x:1,z:7,radius:16,done:false},
-  {id:'recover',title:'TOW THE DISABLED VEHICLE',detail:'HEMTT / HOOK UP, THEN DELIVER',unit:'recovery',x:-21,z:-17,radius:11,done:false},
+  {id:'recover',title:'RECOVER TRUCK ACROSS BRIDGE',detail:'HEMTT / HOOK UP, TOW OVER BRIDGE TO NORTH STAGING',unit:'recovery',x:-21,z:-17,radius:11,done:false},
   {id:'earthwork',title:'DIG THE DRAINAGE TRENCH',detail:'E390 / EAST ROAD SHOULDER',unit:'excavator',x:28,z:-42,radius:8,done:false},
   {id:'dispatch',title:'ESCORT THE CONVOY',detail:'FOLLOW YOUR LEAD VEHICLE / CLEAR ROAD',unit:null,x:0,z:-78,radius:9999,done:false}
 ];
 units.forEach(syncUnit);
-const state={started:false,won:false,selected:0,working:null,workTime:0,workDuration:2.65,earthMoved:0,bridgeBuild:-1,convoy:false,escortIndex:0,convoyStatus:'HOLDING',storm:false,sound:false,cameraMode:0,orbit:PI,pitch:.58,distance:36,elapsed:0,noticeUntil:0,lastWarning:0};
+const state={started:false,won:false,selected:0,working:null,workTime:0,workDuration:2.65,earthMoved:0,bridgeBuild:-1,bridgeLoadTest:false,convoy:false,escortIndex:0,convoyStatus:'HOLDING',storm:false,sound:false,cameraMode:0,orbit:PI,pitch:.58,distance:36,elapsed:0,noticeUntil:0,lastWarning:0};
 const input={keys:new Set(),forward:0,steer:0,pedalForward:0,pedalReverse:0};
 let audioContext=null;
 function beep(freq=220,duration=.12){
@@ -538,7 +555,7 @@ function actionFor(){
   const specific=objectives.slice(0,4).find(o=>o.unit===unit.id);
   if(specific&&!specific.done){
     const d=Math.hypot(unit.x-specific.x,unit.z-specific.z);
-    return {label:unit.id==='dozer'?'PUSH DEBRIS':unit.id==='bridge'?'DEPLOY BRIDGE':stranded.attached?'DROP OFF RECOVERED TRUCK':'LOWER BOOM / HOOK UP',hint:d<specific.radius?'IN RANGE — PRESS WORK':`TARGET ${Math.ceil(d)} M AWAY`,disabled:d>=specific.radius,objective:specific};
+    return {label:unit.id==='dozer'?'PUSH DEBRIS':unit.id==='bridge'?'DEPLOY BRIDGE':stranded.attached?'DISCONNECT AT NORTH STAGING':'LOWER BOOM / HOOK UP',hint:d<specific.radius?'IN RANGE — PRESS WORK':stranded.attached?(!objectives[1].done?'DEPLOY THE M60 BRIDGE FIRST':`NORTH BANK / ${Math.ceil(d)} M TO DROPOFF`):`TARGET ${Math.ceil(d)} M AWAY`,disabled:d>=specific.radius||(unit.id==='recovery'&&stranded.attached&&(!objectives[1].done||stranded.z<41)),objective:specific};
   }
   if(objectives.slice(0,4).every(o=>o.done))return {label:'DISPATCH CONVOY',hint:'ROUTE OPEN — AUTHORIZE MOVEMENT',disabled:false,objective:objectives[4]};
   return {label:'UNIT TASK COMPLETE',hint:'SELECT ANOTHER ENGINEER ASSET',disabled:true};
@@ -578,13 +595,18 @@ function finishAction(obj){
     return;
   }
   if(obj.id==='recover'&&!stranded.attached){
+    const rig=units[2],fx=Math.sin(rig.heading),fz=Math.cos(rig.heading);
     stranded.attached=true;recoveryGlow.visible=false;
+    // Set a sensible starting pose for the tow joint at the rear of the HEMTT.
+    stranded.heading=rig.heading;
+    stranded.x=rig.x-fx*(5.1+TOW_HITCH_TO_AXLE-TOW_REAR_AXLE_OFFSET);
+    stranded.z=rig.z-fz*(5.1+TOW_HITCH_TO_AXLE-TOW_REAR_AXLE_OFFSET);
     obj.x=recoveryDropoff.x;obj.z=recoveryDropoff.z;obj.radius=recoveryDropoff.radius;
-    obj.detail='HEMTT / TOW TO SOUTH STAGING';
+    obj.detail='HEMTT / CROSS M60 BRIDGE, DELIVER ON NORTH SHOULDER';
     markers.recover.position.set(obj.x,groundY(obj.x,obj.z)+.35,obj.z);
     updateTowedVehicle();
     state.working=null;renderObjectives();updateAction();
-    toast('TOW HOOKED UP — DRIVE THE HEMTT TO SOUTH STAGING');
+    toast('TOW HOOKED UP — CROSS THE BRIDGE TO NORTH STAGING');
     return;
   }
   obj.done=true;
@@ -596,7 +618,7 @@ function finishAction(obj){
   }
   if(obj.id==='recover'){
     stranded.attached=false;towBar.visible=false;
-    toast('DISABLED TRUCK DELIVERED TO STAGING — RECOVERY COMPLETE');
+    toast('DISABLED TRUCK RECOVERED ACROSS BRIDGE — NORTH STAGING SECURED');
   }
   if(obj.id==='earthwork'){
     digSoil(active());
@@ -814,11 +836,11 @@ function update(dt){
   const throttle=clamp((input.keys.has('w')||input.keys.has('arrowup')?1:0)-(input.keys.has('s')||input.keys.has('arrowdown')?1:0)+(pedal||input.forward),-1,1);
   const steering=clamp((input.keys.has('d')||input.keys.has('arrowright')?1:0)-(input.keys.has('a')||input.keys.has('arrowleft')?1:0)+input.steer,-1,1);
   if(!state.working){
-    const desired=throttle*u.maxSpeed*(throttle<0?.52:1);
+    const desired=throttle*(u.id==='recovery'&&stranded.attached?12:u.maxSpeed)*(throttle<0?.52:1);
     u.speed=THREE.MathUtils.damp(u.speed,desired,throttle===0?5:2.3,dt);
     if(Math.abs(u.speed)<.03)u.speed=0;
     // Camera follows from positive Z, so yaw is inverted to match the screen-left/screen-right steering directions.
-    if(Math.abs(u.speed)>.15)u.heading-=steering*u.turn*dt*(.42+Math.min(Math.abs(u.speed)/u.maxSpeed,.75))*(u.speed<0?-1:1);
+    if(Math.abs(u.speed)>.15)u.heading-=steering*u.turn*(u.id==='recovery'&&stranded.attached?.77:1)*dt*(.42+Math.min(Math.abs(u.speed)/u.maxSpeed,.75))*(u.speed<0?-1:1);
     const nx=clamp(u.x+Math.sin(u.heading)*u.speed*dt,-117,117);
     const nz=clamp(u.z+Math.cos(u.heading)*u.speed*dt,-117,117);
     const needsBridge=nz>12&&nz<35;
@@ -849,6 +871,10 @@ function update(dt){
   arm.stick.rotation.x=.67-.6*motion;
   arm.bucket.rotation.x=-.44+.45*motion;
   updateTowedVehicle();
+  if(stranded.attached&&!state.bridgeLoadTest&&stranded.z>=36&&objectives[1].done){
+    state.bridgeLoadTest=true;
+    toast('M60 BRIDGE LOAD TEST PASSED — TOWED TRUCK ACROSS THE RIVER');
+  }
   if(state.bridgeBuild>=0){
     state.bridgeBuild+=dt;
     bridgeSegments.forEach((g,i)=>{g.visible=state.bridgeBuild>=i*.27;});
