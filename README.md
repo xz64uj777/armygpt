@@ -78,3 +78,7 @@ The game offers onscreen analog steering, **hold DRIVE** and **hold REVERSE** pe
 2. Drive the E390 excavator to the east shoulder marker at approximately x=28, z=-42, and tap **DIG** to cut a required drainage trench. Free digging remains available afterward.
 3. Complete the four engineering objectives, then tap **CONVOY**. The lead engineer machine at dispatch becomes the convoy escort; drive it north over the bridge. The four supply trucks keep their spacing, wait for their escort, and halt when a parked engineering vehicle occupies the road. Switch vehicles to move the obstruction, then return to the escort vehicle.
 4. The post-mission **CONTINUE IN FREEPLAY** option still supports mobile drive pedals and excavator work.
+
+
+## E390 manual hydraulics
+Select E390 EXCAVATOR from ASSETS. On phones, hold the individual UP/DOWN boom, OUT/IN stick, CURL/OPEN bucket, or LEFT/RIGHT swing controls. Desktop: T/G boom, Y/N stick, U/J bucket, Q/E turret; Space performs the scoop/dump action. Bucket teeth must contact soil on the east shoulder near the trench marker. SCOOP loads and deforms the terrain; raise/swing at least 5 m away and open the bucket to DUMP. Three completed scoop-and-dump cycles finish the required drainage trench. RESET ARM restores a useful starting pose. Additional scoops are available in freeplay.

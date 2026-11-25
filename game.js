@@ -2,7 +2,7 @@
 // A self-contained, procedural 3D field engineering scenario. No external art assets.
 const $ = (id) => document.getElementById(id);
 const ui = Object.fromEntries([
-  'scene','loader','minimap','objectives','missionCount','missionTip','progressFill','fleet','fleetToggle','fleetToggleLabel','activeUnit',
+  'scene','loader','minimap','objectives','missionCount','missionTip','progressFill','fleet','fleetToggle','fleetToggleLabel','activeUnit','excavatorPanel','excavatorStatus','excavatorReset',
   'speedValue','headingValue','actionButton','actionText','actionHint','startOverlay','startButton',
   'helpButton','helpOverlay','closeHelp','helpDone','weatherButton','weatherLabel','soundButton',
   'convoyLabel','cameraButton','mobileActionButton','mobileActionLabel','joystick','joystickThumb','touchControls',
@@ -119,24 +119,55 @@ function reshapeGround(x,z,depth,radius){
     if(Math.hypot(t.position.x-x,t.position.z-z)<radius+5)t.position.y=groundY(t.position.x,t.position.z);
   }
 }
+// The tip of the E390 bucket is transformed through boom, stick, bucket and turret.
 function excavationSpot(u){
-  return {x:u.x+Math.sin(u.heading)*8,z:u.z+Math.cos(u.heading)*8};
+  const bucket=u.mesh.userData.bucket;
+  bucket.updateWorldMatrix(true,false);
+  const tip=bucket.localToWorld(V(0,-1.27,1.46));
+  return {x:tip.x,y:tip.y,z:tip.z};
 }
 function canExcavate(u){
-  const spot=excavationSpot(u);
-  return Math.abs(spot.x)>18&&Math.abs(spot.x)<105&&Math.abs(spot.z)<106&&(spot.z<7||spot.z>45);
+  const p=excavationSpot(u);
+  return Math.abs(p.x)>18&&Math.abs(p.x)<106&&Math.abs(p.z)<110&&(p.z<7||p.z>45);
 }
-function digSoil(u){
-  if(!canExcavate(u))return;
-  const spot=excavationSpot(u);
-  reshapeGround(spot.x,spot.z,-1.1,6.6);
-  const spoilX=clamp(spot.x+Math.cos(u.heading)*10,-111,111);
-  const spoilZ=clamp(spot.z-Math.sin(u.heading)*10,-111,111);
-  reshapeGround(spoilX,spoilZ,.56,5.8);
-  const spoil=mesh(scene,new THREE.DodecahedronGeometry(2.6,1),MAT.soil,spoilX,groundY(spoilX,spoilZ)-.38,spoilZ,false);
-  spoil.scale.set(1.45,.35,1.35);
+function bucketTouchesSoil(u){
+  const p=excavationSpot(u),height=p.y-groundY(p.x,p.z);
+  return height<=1.35&&height>=-3;
+}
+function canDumpBucket(u){
+  if(!state.bucketLoaded||!state.digOrigin)return false;
+  const p=excavationSpot(u);
+  return Math.abs(p.x)>17&&Math.hypot(p.x-state.digOrigin.x,p.z-state.digOrigin.z)>4.5
+    &&p.y-groundY(p.x,p.z)>1.5&&u.mesh.userData.bucket.rotation.x>-.12;
+}
+function scoopSoil(u){
+  const p=excavationSpot(u);
+  if(!canExcavate(u)||!bucketTouchesSoil(u)||state.bucketLoaded)return;
+  reshapeGround(p.x,p.z,-.85,4.6);
+  state.digOrigin={x:p.x,z:p.z};
+  state.bucketLoaded=true;
+  u.mesh.userData.soilLoad.visible=true;
+  toast('BUCKET LOADED — RAISE, SWING AWAY AND OPEN TO DUMP');
+  updateAction();
+}
+function dumpSoil(u){
+  if(!canDumpBucket(u))return;
+  const p=excavationSpot(u);
+  reshapeGround(p.x,p.z,.42,4.2);
+  state.bucketLoaded=false;state.digOrigin=null;
+  u.mesh.userData.soilLoad.visible=false;
   state.earthMoved+=12;
-  toast('EXCAVATION COMPLETE — '+state.earthMoved+' m³ MOVED');
+  const trench=objectives.find(o=>o.id==='earthwork');
+  if(!trench.done){
+    state.drainageLoads++;
+    if(state.drainageLoads>=3){
+      trench.done=true;markers.earthwork.visible=false;
+      toast('DRAINAGE TRENCH COMPLETE — 3 BUCKETS EXCAVATED');
+      renderObjectives();
+      if(objectives.slice(0,4).every(o=>o.done))toast('ALL FIELD OBJECTIVES COMPLETE — DISPATCH AVAILABLE');
+    }else toast('DRAINAGE TRENCH '+state.drainageLoads+'/3 LOADS DUMPED');
+  }else toast('SPOIL DUMPED — '+state.earthMoved+' m³ MOVED');
+  renderObjectives();updateAction();beep(520,.19);
 }
 function driveY(x,z){
   const bridgeBuilt=typeof objectives!=='undefined' && objectives[1]?.done;
@@ -364,9 +395,11 @@ function makeExcavator(){
   box(bucket,2.1,1.3,1.25,MAT.steel,0,-.56,.54);
   box(bucket,2.3,.22,1.46,MAT.steelDark,0,-1.2,.87);
   for(const x of [-.83,-.28,.28,.83])box(bucket,.33,.4,.8,MAT.steelDark,x,-1.32,1.48);
+  const soilLoad=mesh(bucket,new THREE.DodecahedronGeometry(1.05,1),MAT.soil,0,-.48,.55,false);
+  soilLoad.scale.set(.9,.4,.95);soilLoad.visible=false;
   const ram=cylinder(boom,.15,.15,3.2,MAT.steelDark,0,-.45,2.0,9);
   ram.rotation.x=PI/2.9;
-  g.userData={turret,boom,stick,bucket};
+  g.userData={turret,boom,stick,bucket,soilLoad};
   boom.rotation.x=-.36;stick.rotation.x=.67;bucket.rotation.x=-.44;
   return g;
 }
@@ -508,12 +541,62 @@ const objectives=[
   {id:'clear',title:'PUSH LANDSLIDE OFF ROAD',detail:'D7 / DRIVE BLADE INTO ROCKS, PUSH TO SHOULDER',unit:'dozer',x:1,z:-35,radius:14,done:false},
   {id:'bridge',title:'BRIDGE THE RIVER',detail:'M60 / SOUTH BANK',unit:'bridge',x:1,z:7,radius:16,done:false},
   {id:'recover',title:'RECOVER TRUCK ACROSS BRIDGE',detail:'HEMTT / HOOK UP, TOW OVER BRIDGE TO NORTH STAGING',unit:'recovery',x:-21,z:-17,radius:11,done:false},
-  {id:'earthwork',title:'DIG THE DRAINAGE TRENCH',detail:'E390 / EAST ROAD SHOULDER',unit:'excavator',x:28,z:-42,radius:8,done:false},
+  {id:'earthwork',title:'DIG THE DRAINAGE TRENCH',detail:'E390 / CONTROL BUCKET: 3 SCOOP-AND-DUMP CYCLES',unit:'excavator',x:28,z:-42,radius:12,done:false},
   {id:'dispatch',title:'ESCORT THE CONVOY',detail:'FOLLOW YOUR LEAD VEHICLE / CLEAR ROAD',unit:null,x:0,z:-78,radius:9999,done:false}
 ];
 units.forEach(syncUnit);
-const state={started:false,won:false,selected:0,working:null,workTime:0,workDuration:2.65,earthMoved:0,bridgeBuild:-1,bridgeLoadTest:false,convoy:false,escortIndex:0,convoyStatus:'HOLDING',storm:false,sound:false,cameraMode:0,orbit:PI,pitch:.58,distance:36,elapsed:0,noticeUntil:0,lastWarning:0};
+const state={started:false,won:false,selected:0,working:null,workTime:0,workDuration:2.65,earthMoved:0,drainageLoads:0,bucketLoaded:false,digOrigin:null,bridgeBuild:-1,bridgeLoadTest:false,convoy:false,escortIndex:0,convoyStatus:'HOLDING',storm:false,sound:false,cameraMode:0,orbit:PI,pitch:.58,distance:36,elapsed:0,noticeUntil:0,lastWarning:0};
 const input={keys:new Set(),forward:0,steer:0,pedalForward:0,pedalReverse:0};
+const hydraulicPointers=new Map();
+const hydraulicButtons=[...document.querySelectorAll('.hydraulic-control')];
+function releaseHydraulics(){hydraulicPointers.clear();hydraulicButtons.forEach(b=>b.classList.remove('pressed'));}
+for(const button of hydraulicButtons){
+  button.addEventListener('pointerdown',e=>{
+    if(!state.started||active().id!=='excavator')return;
+    e.preventDefault();
+    button.setPointerCapture(e.pointerId);
+    hydraulicPointers.set(e.pointerId,{axis:button.dataset.axis,dir:Number(button.dataset.dir)});
+    button.classList.add('pressed');
+  });
+  const release=e=>{
+    if(!hydraulicPointers.has(e.pointerId))return;
+    hydraulicPointers.delete(e.pointerId);
+    button.classList.remove('pressed');
+  };
+  for(const event of ['pointerup','pointercancel','lostpointercapture'])button.addEventListener(event,release);
+}
+function updateExcavatorPanel(){
+  ui.excavatorPanel.hidden=!state.started||active().id!=='excavator';
+  if(ui.excavatorPanel.hidden){releaseHydraulics();return;}
+  const p=excavationSpot(active()),above=p.y-groundY(p.x,p.z);
+  ui.excavatorStatus.textContent=state.bucketLoaded
+    ? canDumpBucket(active())?'READY TO DUMP — PRESS WORK':'BUCKET FULL — RAISE, SWING AWAY & OPEN'
+    : bucketTouchesSoil(active())&&canExcavate(active())?'BUCKET ON SOIL — PRESS WORK'
+    : 'LOWER BUCKET ON EAST SHOULDER · '+Math.max(0,Math.round(above*10)/10)+' M ABOVE GROUND';
+}
+function updateHydraulics(dt){
+  if(!state.started||active().id!=='excavator')return;
+  const axes={boom:0,stick:0,bucket:0,swing:0};
+  for(const value of hydraulicPointers.values())axes[value.axis]+=value.dir;
+  const k=input.keys;
+  axes.boom+=(k.has('g')?1:0)-(k.has('t')?1:0);
+  axes.stick+=(k.has('n')?1:0)-(k.has('y')?1:0);
+  axes.bucket+=(k.has('j')?1:0)-(k.has('u')?1:0);
+  axes.swing+=(k.has('e')?1:0)-(k.has('q')?1:0);
+  const a=active().mesh.userData;
+  a.boom.rotation.x=clamp(a.boom.rotation.x+clamp(axes.boom,-1,1)*.65*dt,-.95,.75);
+  a.stick.rotation.x=clamp(a.stick.rotation.x+clamp(axes.stick,-1,1)*.9*dt,-1.35,1.38);
+  a.bucket.rotation.x=clamp(a.bucket.rotation.x+clamp(axes.bucket,-1,1)*1.1*dt,-1.5,.78);
+  a.turret.rotation.y+=clamp(axes.swing,-1,1)*.78*dt;
+}
+ui.excavatorReset.addEventListener('click',()=>{
+  if(active().id!=='excavator')return;
+  releaseHydraulics();
+  const a=active().mesh.userData;
+  a.boom.rotation.x=-.36;a.stick.rotation.x=.67;a.bucket.rotation.x=-.44;a.turret.rotation.y=0;
+  updateExcavatorPanel();updateAction();
+});
+
 let audioContext=null;
 function beep(freq=220,duration=.12){
   if(!state.sound) return;
@@ -587,20 +670,29 @@ function selectVehicle(index){
   state.selected=clamp(index,0,units.length-1);
   resetCameraBehind();
   beep(510,.08);
-  renderFleet();updateAction();
+  renderFleet();updateExcavatorPanel();updateAction();
 }
 function actionFor(){
   if(state.working)return {label:`WORKING ${Math.round(state.workTime/state.workDuration*100)}%`,hint:'FIELD CREW ENGAGED',disabled:true};
   if(active().id==='excavator'){
-    const task=objectives.find(o=>o.id==='earthwork');
-    if(!task.done){
-      const spot=excavationSpot(active());
-      const distance=Math.hypot(spot.x-task.x,spot.z-task.z);
-      const inPosition=canExcavate(active())&&distance<task.radius;
-      return {label:'DIG DRAINAGE TRENCH',hint:inPosition?'IN RANGE — PRESS DIG':`MOVE TO EAST SHOULDER / ${Math.ceil(distance)} M`,disabled:!inPosition,objective:task};
+    const u=active(),task=objectives.find(o=>o.id==='earthwork');
+    if(state.bucketLoaded){
+      const ready=canDumpBucket(u);
+      return {label:'DUMP BUCKET',hint:ready?'SPOIL POSITIONED — PRESS WORK':'RAISE, SWING 5 M AWAY AND OPEN BUCKET',
+        disabled:!ready,objective:{id:'dump'}};
     }
-    if(!state.convoy&&!state.won&&objectives.slice(0,4).every(o=>o.done))return {label:'DISPATCH CONVOY',hint:'ESCORT FROM THE ROAD — CLEAR PARKED MACHINES',disabled:false,objective:objectives[4]};
-    return {label:'EXCAVATE SOIL',hint:canExcavate(active())?'FREE DIG / '+state.earthMoved+' m³ MOVED':'MOVE OFF ROAD TO EXCAVATE',disabled:!canExcavate(active()),objective:{id:'excavate'}};
+    if(!task.done){
+      const p=excavationSpot(u),distance=Math.hypot(p.x-task.x,p.z-task.z);
+      const ready=canExcavate(u)&&bucketTouchesSoil(u)&&distance<task.radius;
+      return {label:'SCOOP SOIL — '+state.drainageLoads+'/3',hint:ready?'BUCKET IN TRENCH — PRESS WORK':
+        distance>=task.radius?'MOVE BUCKET TO TRENCH / '+Math.ceil(distance)+' M':
+        !canExcavate(u)?'SWING BUCKET OFF ROAD':'LOWER BUCKET TEETH TO GROUND',
+        disabled:!ready,objective:{id:'scoop'}};
+    }
+    if(!state.convoy&&!state.won&&objectives.slice(0,4).every(o=>o.done))return {label:'DISPATCH CONVOY',hint:'ESCORT FROM ROAD',disabled:false,objective:objectives[4]};
+    const ready=canExcavate(u)&&bucketTouchesSoil(u);
+    return {label:'SCOOP FREEPLAY SOIL',hint:ready?'READY TO SCOOP':'MOVE OFF ROAD AND LOWER BUCKET',
+      disabled:!ready,objective:{id:'scoop'}};
   }
   if(active().id==='dozer'&&!objectives[0].done){
     const cleared=stones.filter(s=>s.userData.cleared).length;
@@ -634,13 +726,15 @@ function updateAction(){
   ui.actionHint.textContent=a.hint;
   ui.actionButton.disabled=a.disabled;
   ui.mobileActionButton.disabled=a.disabled;
-  ui.mobileActionLabel.textContent=state.working?'BUSY':['excavate','earthwork'].includes(a.objective?.id)?'DIG':a.objective?.id==='dispatch'?'CONVOY':a.label==='DEPLOY BRIDGE'?'BRIDGE':a.objective?.id==='recover'?'TOW':a.objective?.id==='clear'?'PUSH':'WORK';
+  ui.mobileActionLabel.textContent=state.working?'BUSY':a.objective?.id==='scoop'?'SCOOP':a.objective?.id==='dump'?'DUMP':a.objective?.id==='dispatch'?'CONVOY':a.label==='DEPLOY BRIDGE'?'BRIDGE':a.objective?.id==='recover'?'TOW':a.objective?.id==='clear'?'PUSH':'WORK';
   ui.mobileActionButton.setAttribute('aria-label',a.label);
 }
 function startAction(){
   if(!state.started)return;
   const action=actionFor();
   if(action.disabled)return;
+  if(action.objective?.id==='scoop'){scoopSoil(active());updateExcavatorPanel();return;}
+  if(action.objective?.id==='dump'){dumpSoil(active());updateExcavatorPanel();return;}
   if(action.objective?.id==='dispatch'){
     if(state.convoy)return;
     state.convoy=true;state.escortIndex=state.selected;state.convoyStatus='WAITING FOR ESCORT';
@@ -656,12 +750,6 @@ function startAction(){
   updateAction();
 }
 function finishAction(obj){
-  if(obj.id==='excavate'){
-    digSoil(active());
-    state.working=null;state.workDuration=2.65;
-    updateAction();beep(380,.2);
-    return;
-  }
   if(obj.id==='recover'&&!stranded.attached){
     const rig=units[2],fx=Math.sin(rig.heading),fz=Math.cos(rig.heading);
     stranded.attached=true;recoveryGlow.visible=false;
@@ -690,10 +778,6 @@ function finishAction(obj){
     stranded.mesh.rotation.x=0;
     stranded.mesh.position.y=driveY(stranded.x,stranded.z)+.12;
     toast('DISABLED TRUCK RECOVERED ACROSS BRIDGE — NORTH STAGING SECURED');
-  }
-  if(obj.id==='earthwork'){
-    digSoil(active());
-    toast('DRAINAGE TRENCH CUT — ROAD SHOULDER STABILIZED');
   }
   state.working=null;
   renderObjectives();updateAction();beep(650,.35);
@@ -762,8 +846,8 @@ const keyDown=e=>{
 };
 window.addEventListener('keydown',keyDown);
 window.addEventListener('keyup',e=>input.keys.delete(e.key.toLowerCase()));
-window.addEventListener('blur',()=>{input.keys.clear();resetTouchInputs();orbit.pointers.clear();orbit.lastTap=null;});
-document.addEventListener('visibilitychange',()=>{if(document.hidden)resetTouchInputs();});
+window.addEventListener('blur',()=>{input.keys.clear();resetTouchInputs();releaseHydraulics();orbit.pointers.clear();orbit.lastTap=null;});
+document.addEventListener('visibilitychange',()=>{if(document.hidden){resetTouchInputs();releaseHydraulics();}});
 ui.actionButton.addEventListener('click',startAction);
 ui.mobileActionButton.addEventListener('click',startAction);
 function cycleCamera(){state.cameraMode=(state.cameraMode+1)%3;state.orbit=PI;state.distance=[36,24,82][state.cameraMode];state.pitch=[.58,.37,1.25][state.cameraMode];toast(['TACTICAL CHASE CAMERA','LOW-LEVEL FOLLOW CAMERA','HIGH-ALTITUDE COMMAND CAMERA'][state.cameraMode]);}
@@ -793,7 +877,7 @@ function start(){
   state.started=true;
   resetCameraBehind();
   ui.startOverlay.classList.add('hidden');
-  renderFleet();
+  renderFleet();updateExcavatorPanel();
   toast('ENGINEER BATTALION DEPLOYED — OPEN THE PASS');
   ui.scene.focus?.();
 }
@@ -944,11 +1028,8 @@ function update(dt){
   // Hide the loose hanging cable once the solid wheel-lift takes the load.
   recoveryGear.cable.visible=!stranded.attached;
   recoveryGear.hook.visible=!stranded.attached;
-  const arm=units[3].mesh.userData;
-  const motion=['excavate','earthwork'].includes(state.working?.id)?Math.sin(state.workTime/state.workDuration*PI):0;
-  arm.boom.rotation.x=-.36+.26*motion;
-  arm.stick.rotation.x=.67-.6*motion;
-  arm.bucket.rotation.x=-.44+.45*motion;
+  // All four excavator joints are controlled by held buttons/keys; no scripted digging animation.
+  updateHydraulics(dt);
   updateTowedVehicle();
   if(stranded.attached&&!state.bridgeLoadTest&&stranded.z>=36&&objectives[1].done){
     state.bridgeLoadTest=true;
@@ -1025,7 +1106,7 @@ function drawFrame(now){
     hudCounter=0;
     ui.speedValue.textContent=Math.round(Math.abs(u.speed)*3.6).toString().padStart(2,'0');
     ui.headingValue.textContent=(`${Math.round(((u.heading*180/PI)%360+360)%360)}`.padStart(3,'0'))+'°';
-    updateAction();drawMap();updateMarker();
+    updateAction();updateExcavatorPanel();drawMap();updateMarker();
   }
 }
 function resize(){
